@@ -10,6 +10,26 @@
 
 ## 1. The mental model
 
+> **Decisions locked 2026-08-08 (owner: Carter):**
+> - **Serena** = external MCP code-intelligence server (oraios/serena,
+>   "the IDE for your agent" — symbol-level semantic retrieval/editing over
+>   LSP + SCIP + ripgrep). `SerenaProvider` wraps it as an MCP client; we do
+>   NOT reimplement its semantics.
+> - **Repo Intelligence stack** = Hilo-type graph + ast-grep + LSP + SCIP +
+>   ripgrep + gitnexus/codegraph (repo). GitReins 2.0 integrates these as
+>   providers; it does not hand-roll graph semantics.
+> - **Codebase/home** = a **branch of the existing gitreins fork**
+>   (`carterlasalle/gitreins`, branch `v2`), not a new repo.
+> - **Models** = no placeholders; exact IDs go in a config file (easy to edit).
+>   Keep the ones from the spec for now: qwen/qwen3.7-flash + deepseek-v4-flash-0731.
+> - **Lane A** = refactor the criteria evaluator onto the new `AgentRunner` base.
+> - **PR service-mode sandbox** = IN SCOPE for v2.0 (ephemeral container, network
+>   default-deny, no credentials).
+> - **GitReins tasks as intent** = v2.0 **consumes** tasks that exist; it does
+>   NOT auto-create them from issues (a human/agent creates the task, review
+>   consumes it).
+
+
 ```
                      GITREINS (control plane)
                 ┌────────────────────────────┐
