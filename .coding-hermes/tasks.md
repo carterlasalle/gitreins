@@ -50,11 +50,16 @@ Extract the good parts of `AgenticEvaluator` into `engine/agents/runner.py`:
 - [x] R2-5 agent tools registered via codeintel_tools() (engine/agents/tools.py, exported in agents/__init__.py): ast_search, text_search, get_symbol_definition, find_references, get_callers, get_callees, get_implementations, get_change_impact — small structured answers (500-char snippet cap, limit cap, errors degrade to []) (ae62a0c)
 - [x] R2-5 tests: 30 codeintel + 43 agents tests pass; full suite 1229 passed/5 skipped (judge run); judge verdict 53537562 (tier2 COMPLETE 5/5 PASS; tier1 lint FAIL = ruff-not-found judge-subprocess PATH artifact, tests+secrets PASS). test_lsp.py hang is pre-existing (reproduced on parent d870e1b), unrelated to R2.5.
 
-### R2.6 — Scout agent + evidence planner
-- `engine/review/scout.py`: cheap Qwen prompt → {changed_symbols, retrieval_requests,
-  review_lenses} JSON (retrieval PLAN, not a review).
-- `engine/review/context_builder.py`: deterministic evidence planner executes the
-  retrieval_requests (callers of foo → 3 callers) — NOT the LLM.
+### R2.6 — Scout agent + evidence planner ✅ 05eb02d (judge COMPLETE 7119237d)
+- [x] `engine/review/scout.py`: cheap Qwen prompt → {changed_symbols, retrieval_requests,
+  review_lenses} JSON (retrieval PLAN, not a review). (05eb02d, 2026-08-08)
+- [x] `engine/review/context_builder.py`: deterministic evidence planner executes the
+  retrieval_requests (callers of foo → 3 callers) — NOT the LLM. (05eb02d)
+- [x] R2-6 judge: verified COMPLETE 7119237d (ScoutAgent(AgentRunner) produces ScoutPlan
+  JSON via schema, model_role='scout'). Tier1 fixes (ruff/LSP/ast-grep/gitleaks PATH +
+  .venv allowlist) committed 24f238a/3f946f4/f66edfd.
+- [x] DOCS-000 docs pass (re-run 2026-08-08): README v2 architecture section +
+  docs/architecture-v2.md runbook (cc86d1a).
 
 ### R2.7 — Review agents (Lane B: defect discovery)
 - `engine/review/orchestrator.py`: runs the review DAG.
