@@ -576,6 +576,86 @@ class TestCppLanguageDetection:
         )
 
 
+# ── Guards config overrides: lint_command / test_command / test_timeout ─────
+
+
+class TestGuardsCommandOverrides:
+    """Verify .gitreins/config.yaml guards overrides reach the tier1 steps.
+
+    Regression: ``guards.lint_command`` was dead config — the judge's tier1
+    lint step always used the hardcoded language default (``ruff check .``),
+    which fails in the judge's bare-shell subprocess where ``.venv/bin`` is
+    not on PATH. The config override (``uv run ruff check .``) must win.
+    """
+
+    def _make_py_workdir(self, tmp_workdir):
+        with open(os.path.join(tmp_workdir, "pyproject.toml"), "w") as f:
+            f.write("[project]\nname = 'x'\n")
+        return tmp_workdir
+
+    def test_lint_command_override_wins(self, tmp_workdir):
+        """guards.lint_command replaces the language-default lint command."""
+        from engine.pipeline import _default_tier1_steps
+
+        self._make_py_workdir(tmp_workdir)
+        steps = _default_tier1_steps(
+            tmp_workdir, {"guards": {"lint_command": "uv run ruff check ."}}
+        )
+        lint_step = next(s for s in steps if s["id"] == "lint")
+        assert lint_step["run"] == "uv run ruff check ."
+
+    def test_lint_command_absent_uses_language_default(self, tmp_workdir):
+        """No lint_command configured → language default is kept."""
+        from engine.pipeline import _default_tier1_steps
+
+        self._make_py_workdir(tmp_workdir)
+        steps = _default_tier1_steps(tmp_workdir, {})
+        lint_step = next(s for s in steps if s["id"] == "lint")
+        assert "ruff" in lint_step["run"]
+
+    def test_test_command_override_wins(self, tmp_workdir):
+        """guards.test_command still replaces the default test command."""
+        from engine.pipeline import _default_tier1_steps
+
+        self._make_py_workdir(tmp_workdir)
+        steps = _default_tier1_steps(
+            tmp_workdir, {"guards": {"test_command": "uv run pytest -x"}}
+        )
+        test_step = next(s for s in steps if s["id"] == "tests")
+        assert test_step["run"] == "uv run pytest -x"
+
+    def test_test_timeout_override_wins(self, tmp_workdir):
+        """guards.test_timeout replaces the 120s default."""
+        from engine.pipeline import _default_tier1_steps
+
+        self._make_py_workdir(tmp_workdir)
+        steps = _default_tier1_steps(
+            tmp_workdir, {"guards": {"test_timeout": 300}}
+        )
+        test_step = next(s for s in steps if s["id"] == "tests")
+        assert test_step["timeout"] == 300
+
+    def test_lint_and_test_overrides_together(self, tmp_workdir):
+        """Both overrides applied in one config."""
+        from engine.pipeline import _default_tier1_steps
+
+        self._make_py_workdir(tmp_workdir)
+        steps = _default_tier1_steps(
+            tmp_workdir,
+            {
+                "guards": {
+                    "lint_command": "uv run ruff check .",
+                    "test_command": "uv run pytest -x --tb=short",
+                    "test_timeout": 900,
+                }
+            },
+        )
+        by_id = {s["id"]: s for s in steps}
+        assert by_id["lint"]["run"] == "uv run ruff check ."
+        assert by_id["tests"]["run"] == "uv run pytest -x --tb=short"
+        assert by_id["tests"]["timeout"] == 900
+
+
 # ── GR-063j: C# pipeline — dotnet + .csproj/.sln detection ───────────────────
 
 

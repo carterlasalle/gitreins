@@ -893,11 +893,17 @@ def _default_tier1_steps(workdir: str, config: dict | None = None) -> list[dict]
     returns lint + test commands for the primary language found.
     Falls back to a secrets-only step when no language is detected.
 
-    Honors .gitreins/config.yaml overrides: ``guards.test_command`` and
-    ``guards.test_timeout`` replace the language-default test command and
+    Honors .gitreins/config.yaml overrides: ``guards.lint_command``
+    replaces the language-default lint command, and ``guards.test_command``
+    + ``guards.test_timeout`` replace the language-default test command and
     the 120s script timeout (large Go suites exceed 120s).
+
+    NOTE: the lint override exists because the judge subprocess runs steps in
+    a bare shell (``.venv/bin`` NOT on its PATH) — ``uv run ruff check .``
+    resolves ruff through uv while a bare ``ruff`` does not.
     """
     guards_cfg = (config or {}).get("guards", {})
+    configured_lint_cmd = guards_cfg.get("lint_command")
     configured_test_cmd = guards_cfg.get("test_command")
     test_timeout = int(guards_cfg.get("test_timeout", 120))
     steps: list[dict] = [
@@ -973,7 +979,10 @@ def _default_tier1_steps(workdir: str, config: dict | None = None) -> list[dict]
 
     if primary is not None:
         lint_cmd, test_cmd = _LANG_COMMANDS[primary]
-        steps.append({"id": "lint", "type": "script", "run": lint_cmd})
+        lint_step: dict = {"id": "lint", "type": "script", "run": lint_cmd}
+        if configured_lint_cmd:
+            lint_step["run"] = configured_lint_cmd
+        steps.append(lint_step)
         test_step: dict = {"id": "tests", "type": "script", "run": test_cmd}
         if configured_test_cmd:
             test_step["run"] = configured_test_cmd
