@@ -146,6 +146,18 @@ Extract the good parts of `AgenticEvaluator` into `engine/agents/runner.py`:
 - [ ] R2-16 criteria eval (Lane A) + defect review (Lane B) → combined review
 - [ ] R2-16 tests: review DAG E2E + gitreins review CLI
 
+### DOCS-001 — Final documentation pass re-run (after R2.16)
+- [ ] DOCS-001 update README for the completed R2.7–R2.16 work: review DAG
+  (orchestrator, reviewers, verifier, ranker, dedup, writer), ChangeSource +
+  `gitreins review` / `gitreins review --pr <n>`, PR sandbox, intent system,
+  ReviewLearning/provenance, propagate_policy, and the CodeRabbit-replacement.
+- [ ] DOCS-001 refresh docs/architecture-v2.md + docs/ index to match built code
+- [ ] DOCS-001 verify GitHub repo description + topics still match (`gh repo edit`)
+- [ ] DOCS-001 formatting bar: README still skimmable (title + badges + nav +
+  diagram + tables); `uv run ruff format --check .` passes (lints README/docs
+  Python blocks)
+- [ ] DOCS-001 judge + commit + push
+
 ## NEVER-DONE (audit — run only when board is empty)
 - Full regression: `gitreins guard`, evaluator suite, review DAG E2E against a
   seeded repo, PR-mode smoke.
