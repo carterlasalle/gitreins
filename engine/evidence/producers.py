@@ -10,8 +10,13 @@ producers convert their output (``StaticDiag`` objects / the dicts returned by
 
 from __future__ import annotations
 
+import importlib
+import logging
+
 from engine.evidence.models import Evidence, make_ref
 from engine.static_analysis import StaticDiag
+
+logger = logging.getLogger("gitreins.evidence.producers")
 
 
 def from_static_diag(
@@ -104,4 +109,62 @@ def from_command(
     )
 
 
-__all__ = ["from_static_diag", "static_findings_to_evidence", "from_command"]
+# ── External analyzer dispatch (R2.4 criterion 4 — DESIGN_v2.md §6.1, §16) ──
+#
+# The engine/analyzers package turns external security scanners (semgrep,
+# ast-grep, trivy, gitleaks) into evidence producers. These two helpers keep
+# the package wiring in one place; the per-tool parsers/runners live in
+# engine/analyzers/*.py and are imported lazily (no import cycle).
+
+_ANALYZER_RUNNERS = {
+    "semgrep": ("engine.analyzers.semgrep", "run_semgrep", "parse_semgrep_json"),
+    "ast-grep": ("engine.analyzers.astgrep", "run_astgrep", "parse_astgrep_json"),
+    "astgrep": ("engine.analyzers.astgrep", "run_astgrep", "parse_astgrep_json"),
+    "trivy": ("engine.analyzers.trivy", "run_trivy", "parse_trivy_json"),
+    "gitleaks": ("engine.analyzers.gitleaks", "run_gitleaks", "parse_gitleaks_json"),
+}
+
+
+def run_analyzers(
+    workdir: str, tools: tuple[str, ...] = ("semgrep", "ast-grep", "trivy", "gitleaks")
+) -> list[Evidence]:
+    """Run external analyzers and collect every finding as Evidence.
+
+    Each tool's ``run_*`` function skips gracefully (logged note, no evidence)
+    when its binary is not installed. Unknown tool names are logged and
+    skipped; ``astgrep`` is accepted as an alias for ``ast-grep``.
+    """
+    result: list[Evidence] = []
+    for tool in tools:
+        entry = _ANALYZER_RUNNERS.get(tool)
+        if entry is None:
+            logger.warning("Unknown analyzer tool %r — skipping", tool)
+            continue
+        module_name, run_name, _ = entry
+        module = importlib.import_module(module_name)
+        result.extend(getattr(module, run_name)(workdir))
+    return result
+
+
+def parse_analyzer_output(tool: str, data: dict | list) -> list[Evidence]:
+    """Parse a tool's raw JSON output (as decoded by ``json.loads``) into Evidence.
+
+    Dispatches by tool name to the matching ``parse_*_json`` function; raises
+    ``ValueError`` for unknown tools. ``astgrep`` is accepted as an alias for
+    ``ast-grep``.
+    """
+    entry = _ANALYZER_RUNNERS.get(tool)
+    if entry is None:
+        raise ValueError(f"unknown analyzer tool: {tool!r}")
+    module_name, _, parse_name = entry
+    module = importlib.import_module(module_name)
+    return getattr(module, parse_name)(data)
+
+
+__all__ = [
+    "from_static_diag",
+    "static_findings_to_evidence",
+    "from_command",
+    "run_analyzers",
+    "parse_analyzer_output",
+]
