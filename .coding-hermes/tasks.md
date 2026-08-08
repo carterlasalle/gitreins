@@ -100,11 +100,21 @@ Extract the good parts of `AgenticEvaluator` into `engine/agents/runner.py`:
   `lint_command` (uv run ruff check .) mirroring test_command; 5 regression
   tests (TestGuardsCommandOverrides). Next judge run = clean tier1.
 
-### R2.9 — Ranker + dedup + comment writer
-- [ ] R2-9 engine/review/ranker.py — findings ranked by evidence overlap + usefulness
-- [ ] R2-9 engine/review/dedup.py — dedupe findings by evidence overlap
-- [ ] R2-9 engine/review/writer.py — batched comment writer (GitHub/agent)
-- [ ] R2-9 tests: ranker/dedup/writer hermetic tests
+### R2.9 — Ranker + dedup + comment writer ✅ a0bffe0 (judge PASS 8b8b7b2e, tier1 clean)
+- [x] R2-9 engine/review/ranker.py — findings ranked by evidence overlap + usefulness
+- [x] R2-9 engine/review/dedup.py — dedupe findings by evidence overlap
+- [x] R2-9 engine/review/writer.py — batched comment writer (GitHub/agent)
+- [x] R2-9 tests: ranker/dedup/writer hermetic tests
+> rank_findings deterministic LLM-free key (severity, confidence, exec-path,
+> developer-relevance, file/line/claim tie-break); dedupe_findings union-find
+> grouping by shared evidence refs OR same-file line proximity (10 lines),
+> most-useful representative kept, identity preserved; CommentWriter(AgentRunner)
+> MODEL_ROLE=writer — ONE batched LLM call → CommentBatch, review.models.writer
+> fallback never raises. 55 hermetic tests (StubLLM); full suite 1583 passed /
+> 15 skipped (5 pre-existing: static_analysis mypy env artifact reproduced on
+> parent HEAD, cli lifecycle flaky passes in isolation, lsp hang pre-existing);
+> ruff clean. Judge verdict 8b8b7b2e: tier1 lint/tests/secrets ALL PASS (first
+> clean tier1 since lint_command fix 073ae19), tier2 COMPLETE 4/4. R2.10 ready.
 
 ### R2.10 — ChangeSource abstraction (local + GitHub PR)
 - [ ] R2-10 engine/github/checkout.py + ChangeSource Protocol (diff/changed_files/base_sha/head_sha)
