@@ -32,12 +32,9 @@ Extract the good parts of `AgenticEvaluator` into `engine/agents/runner.py`:
 - New: `engine/agents/budget.py`, `tools.py`, `schemas.py`.
 - Keep `AgenticEvaluator` behavior working (it becomes `CriteriaEvaluator(AgentRunner)`).
 
-### R2.3 — CriteriaEvaluator = Lane A (requirements/completeness)
-Refactor `AgenticEvaluator` onto `AgentRunner`. Keep the criteria-based prompt
-(TASK → criterion 1..n → verify each → COMPLETE/INCOMPLETE) and the
-MANDATORY TEST VERIFICATION + scan_security tools already added.
-- `engine/evaluator.py` re-expressed as `CriteriaEvaluator(AgentRunner)`.
-- Must still pass the existing 202 evaluator/pipeline/judge tests.
+### R2.3 — CriteriaEvaluator = Lane A (requirements/completeness) ✅ 3cd9b0e
+- [x] R2-3 engine/evaluator.py re-expressed as CriteriaEvaluator(AgentRunner) — alias keeps pipeline/judge callers; criteria prompt + MANDATORY TEST VERIFICATION + scan_security retained (3cd9b0e, 2026-08-08)
+- [x] R2-3 tests: 21 tests in test_criteria_evaluator.py (subclass/alias, run() delegation, budget wiring, compaction, hard-rule retention) — full suite 1314 passed, 8 skipped; judge verdict 30361ec4 (tier2 COMPLETE, 4/4 criteria PASS; tier1 lint FAIL = ruff-not-found judge-subprocess PATH artifact, tests+secrets PASS)
 
 ### R2.4 — Evidence store (first-class Evidence type)
 - `engine/evidence/models.py`: `Evidence` dataclass (id, kind, source, file,
