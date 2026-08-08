@@ -1839,6 +1839,33 @@ Output ONLY the JSON verdict when done — no markdown fences, no extra text."""
         except Exception as e:
             return {"error": str(e)}
 
+    def _changed_files_for_scan(self) -> list[str]:
+        """Return the repo-relative paths of changed files (staged + unstaged,
+        git vs HEAD) for diff-scoped scanning. Falls back to [] on any git
+        error so scan_security degrades gracefully. (2026-08-08: scan only the
+        diff, not the whole repo.)"""
+        try:
+            import subprocess as _sp
+            changed: list[str] = []
+            for args in (["git", "diff", "--name-only", "HEAD"],
+                         ["git", "diff", "--cached", "--name-only"]):
+                res = _sp.run(args, capture_output=True, text=True,
+                              timeout=10, cwd=self.workdir)
+                for line in res.stdout.splitlines():
+                    line = line.strip()
+                    if line:
+                        changed.append(line)
+            # Dedupe preserving order.
+            seen: set[str] = set()
+            out: list[str] = []
+            for c in changed:
+                if c not in seen:
+                    seen.add(c)
+                    out.append(c)
+            return out
+        except Exception:
+            return []
+
     def _tool_scan_security(self, path: str | None = None) -> dict:
         """Run ast-grep security-pattern scan against the CodeRabbit essential
         rules (deterministic, syntax-aware — finds real vulns without relying on
@@ -1867,12 +1894,22 @@ Output ONLY the JSON verdict when done — no markdown fences, no extra text."""
             if not rule_files:
                 rule_files = sorted(_glob.glob(os.path.join(rules_dir, "*", "*.yml")))
 
-            scan_target = path if path else "."
+            # Scan only the changed files by default, NOT the whole repo.
+            # Running 184 rules across every file is the dominant judge cost;
+            # security findings only matter on code this PR actually touched.
+            # An explicit `path` overrides; otherwise derive from git diff.
+            scan_targets = None
+            if path:
+                scan_targets = [path]
+            else:
+                scan_targets = self._changed_files_for_scan()
+            if not scan_targets:
+                return {"findings": [], "note": "no changed files to scan"}
             all_findings = []
             skipped = 0
             for rf in rule_files:
                 result = _sp.run(
-                    [ast_grep, "scan", "--rule", rf, "--format", "sarif", scan_target],
+                    [ast_grep, "scan", "--rule", rf, "--format", "sarif"] + scan_targets,
                     capture_output=True, text=True, timeout=30,
                     cwd=self.workdir,
                 )
