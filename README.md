@@ -358,6 +358,63 @@ history:
 | [Full Architecture](docs/architecture.md) | System design and data flow |
 | [Component Map](docs/component-map.md) | Module inventory with paths and line counts |
 | [Agentic Evaluator Design](docs/evaluator-loop.md) | How the evaluator loop works |
+| [GitReins 2.0 Design](DESIGN_v2.md) | Evidence-driven cheap-model review ensemble (v2) |
+
+---
+
+## GitReins 2.0 (branch `v2`) — Review Ensemble Architecture
+
+The `v2` branch refactors GitReins from a single-criterion evaluator into an
+**evidence-driven, cheap-model review ensemble** — "GitReins + a repository
+intelligence layer + cheap specialized models." The control plane (guards, task
+lifecycle, MCP, verdicts) is unchanged; the review brain is new. See
+[`DESIGN_v2.md`](DESIGN_v2.md) for the full spec.
+
+### Two independent AI lanes
+
+| | Lane A — Requirements | Lane B — Defect discovery |
+|---|---|---|
+| Question | Did they implement the stated criteria? | Did the patch break something? |
+| Engine | `CriteriaEvaluator` (was `AgenticEvaluator`) | New review DAG (scout → evidence → reviewers → verifier) |
+
+### New modules (R2.1–R2.6)
+
+| Module | What it does | R2 |
+|---|---|---|
+| `engine/router.py` | `ModelRouter.for_role(role)` — per-role LLM client from `review.models` config | R2.1 |
+| `engine/agents/` | `AgentRunner` generic bounded loop (caps, compaction, tool-dedup) + `budget.py`/`tools.py`/`schemas.py` | R2.2 |
+| `engine/evaluator.py` | Re-expressed as `CriteriaEvaluator(AgentRunner)` — criteria-based Lane A | R2.3 |
+| `engine/evidence/` | First-class `Evidence` type + store + provenance; analyzers become evidence producers | R2.4 |
+| `engine/analyzers/` | `semgrep`/`ast-grep`/`trivy`/`gitleaks` → `Evidence` | R2.4 |
+| `engine/codeintel/` | `CodeIntelProvider` Protocol + `astgrep`/`ripgrep`/`lsp`/`graph`/`serena` providers | R2.5 |
+| `engine/review/scout.py` | Cheap Qwen scout → retrieval plan (symbols, requests, lenses) | R2.6 |
+| `engine/review/context_builder.py` | Deterministic evidence planner executes the scout's retrieval requests | R2.6 |
+
+### Review pipeline (in progress, R2.7+)
+
+```
+change_analysis → static_evidence (parallel analyzers) → scout → evidence_retrieval
+  → reviewers (runtime/contract/security, parallel) → candidate_merge
+  → verify_findings (adversarial) → rank → criteria_eval (Lane A) → publish
+```
+
+### Key behavior changes on `v2`
+
+- **Model routing** is per-role (scout, reviewers, verifier, writer), not one
+  pipeline-wide client.
+- **`scan_security`** runs only against the **changed files** (git diff), not
+  the whole repo — bounds the judge's cost.
+- **Evidence** is a first-class type: every claim references `E<n>` ids with
+  provenance, never "assertions from nowhere."
+- **Code intelligence** tools return small structured answers (callers, callees,
+  definitions) instead of whole files.
+
+### v2 build progress
+
+Completed through **R2.6** (ModelRouter, AgentRunner, CriteriaEvaluator, Evidence,
+Code Intelligence, Scout + planner). R2.7+ (reviewers, verifier, ranker, writer,
+ChangeSource, sandbox, intent, history, review DAG wiring) in progress on branch
+`v2`. Tracked on the board at `.coding-hermes/tasks.md`.
 
 ## License
 
