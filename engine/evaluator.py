@@ -1,20 +1,31 @@
 """
-Agentic Evaluator — Iterative LLM loop that judges code completeness.
+CriteriaEvaluator — Lane A (requirements/completeness) evaluator on AgentRunner.
 
-The evaluator receives task criteria and iterates: read files, run tests,
-search patterns — until it has enough evidence to deliver a verdict.
+Re-expresses the legacy monolithic ``AgenticEvaluator`` loop on the R2.2
+``AgentRunner`` (engine/agents/runner.py). The runner supplies the bounded
+loop — iteration/wall-clock/token caps via ``Budget``, tool-call weighting,
+context compaction, tool dedup, bounded file reads, sandbox scratch state,
+and LLM tool calling resolved per model_role via ``ModelRouter.for_role()`` —
+while this class keeps the criteria-based prompt (TASK → criterion 1..n →
+verify each → COMPLETE/INCOMPLETE) and the evaluator's tool surface.
 
-7 tools available to the LLM:
-  1. read_file(path)         — Read any file in the working tree
+12 tools available to the LLM:
+  1. read_file(path)         — Read any file in the working tree (bounded)
   2. run_command(cmd)        — Run a shell command (tests, lint, build)
   3. search_pattern(regex)   — Grep the codebase for a pattern
   4. read_diff()             — Show staged changes
   5. get_task_item(id)       — Read a task's criteria
   6. sandbox_write(key, content) / sandbox_read(key) — Scratch space
+  7. detect_dead_code() / skylos_scan() — Dead-code scans
+  8. scan_security()         — ast-grep CodeRabbit-essentials security scan
+  9. read_static_analysis(path) / read_lsp_diagnostics() — Diagnostics
 
-Usage:
-    evaluator = AgenticEvaluator(llm_client, workdir="/path/to/repo")
+Usage (unchanged):
+    evaluator = CriteriaEvaluator(llm_client, workdir="/path/to/repo")
     verdict = evaluator.evaluate(task)
+
+``AgenticEvaluator`` remains importable as an alias for backward
+compatibility (engine/pipeline.py, engine/judge.py).
 """
 
 import json
@@ -24,9 +35,13 @@ import re
 import shutil
 import subprocess
 from dataclasses import dataclass, field
+from typing import Any, Callable
 
 from engine.llm import LLMClient, ToolCall
 from engine.eval_cap import EvalCap, parse_eval_cap, eval_cap_from_config, _fmt_tokens
+from engine.agents.budget import Budget
+from engine.agents.runner import AgentRunError, AgentRunner, BudgetExceededError, RoleRouter
+from engine.agents.tools import Tool, ToolRegistry
 
 logger = logging.getLogger("gitreins.evaluator")
 
@@ -366,8 +381,34 @@ class Verdict:
     summary: str = ""
 
 
-class AgenticEvaluator:
-    """The evaluator loop: LLM iterates with tools until it delivers a verdict.
+class _FixedClientRouter:
+    """RoleRouter stand-in returning one fixed LLMClient for any role.
+
+    Keeps the legacy constructor API (``AgenticEvaluator(llm, workdir)``)
+    working on top of the AgentRunner loop, which resolves its client via
+    ``ModelRouter.for_role(role)``. Callers that want real per-role model
+    routing can pass their own ``router`` to ``CriteriaEvaluator`` instead.
+    """
+
+    def __init__(self, llm: LLMClient):
+        self.llm = llm
+
+    def for_role(self, role: str) -> LLMClient:
+        return self.llm
+
+
+class CriteriaEvaluator(AgentRunner):
+    """Lane A criteria evaluator — an AgentRunner with the criteria-based
+    evaluation prompt, tools, and Verdict output schema (R2.3).
+
+    Re-expresses the legacy monolithic AgenticEvaluator loop on the R2.2
+    AgentRunner machinery (engine/agents/runner.py): iteration/wall-clock/
+    token caps via Budget, tool-call weighting, context compaction, tool
+    dedup, bounded file reads, sandbox scratch state, and LLM tool calling
+    resolved per model_role via ModelRouter.for_role() (a fixed-client
+    router preserves the legacy ``llm`` constructor argument).
+
+    Public API (unchanged): ``evaluate(task) -> Verdict``.
 
     Caps can be set via:
       - eval_cap string: "100", "30m", "200k/50k", "100/30m/200k/50k", "-1" (unlimited)
@@ -385,9 +426,26 @@ class AgenticEvaluator:
         max_iterations: int | None = None,
         eval_cap: str | EvalCap | None = None,
         command_timeout: int = 30,
+        *,
+        router: RoleRouter | None = None,
     ):
+        """``router`` optionally supplies the ModelRouter used by the
+        AgentRunner loop; when omitted, a fixed router returns ``llm`` for
+        every role (legacy behavior)."""
+        super().__init__(
+            router=router if router is not None else _FixedClientRouter(llm),
+            workdir=workdir,
+            command_timeout=command_timeout,
+            max_tokens_per_call=16384,  # overridden from config below
+            max_compactions=3,
+            parser=self._parse_verdict,
+        )
         self.llm = llm
-        self.workdir = os.path.abspath(workdir)
+
+        # Read config for per-call token cap + max file bytes (GR-064d).
+        config = self._load_config()
+        evaluator_cfg = config.get("evaluator", {})
+        self.max_tokens_per_call = int(evaluator_cfg.get("max_tokens_per_call", 16384))
 
         # Resolve eval cap — explicit param wins, then max_iterations, then config
         if isinstance(eval_cap, EvalCap):
@@ -401,7 +459,6 @@ class AgenticEvaluator:
             )
         else:
             # max_iterations=None or max_iterations<=0 — read from config.yaml
-            config = self._load_config()
             self.eval_cap = eval_cap_from_config(config)
 
         # max_iterations from EvalCap is authoritative — 100 by default, -1 for unlimited
@@ -423,6 +480,9 @@ class AgenticEvaluator:
         self._searches_done: set[str] = set()
         self._tier1_diagnostics: list[dict] = []
         self._allowed_files: set[str] | None = None  # None = full scope, set = restricted
+        # Lazily-built tool registry for direct (non-run) tool callers
+        # (_execute_tool_with_dedup etc.); run() builds its own per-run registry.
+        self._registry: ToolRegistry | None = None
 
         # ── Fast-track mode (GR-064a) ──
         # Resolve fast_track from config. "auto" = detect based on package count.
@@ -431,8 +491,6 @@ class AgenticEvaluator:
         # ── Max file bytes (GR-064d) ──
         # Cap read_file results to prevent a single large file from eating
         # the entire evaluator context window.
-        config = self._load_config()
-        evaluator_cfg = config.get("evaluator", {})
         self.max_file_bytes: int = int(evaluator_cfg.get("max_file_bytes", 131_072))
 
     def _resolve_fast_track(self) -> bool:
@@ -899,8 +957,103 @@ class AgenticEvaluator:
 
         return new_messages, compaction_count + 1
 
+    def _make_budget(self, config: dict) -> Budget:
+        """Build the run Budget from the resolved EvalCap + evaluator ratios.
+
+        ``self.eval_cap`` remains the source of truth (tests mutate it
+        directly before evaluate()); the config's compaction/code-context
+        ratios are overlaid per run.
+        """
+        evaluator_cfg = config.get("evaluator", {}) or {}
+        return Budget(
+            max_iterations=self.eval_cap.max_iterations,
+            max_time=self.eval_cap.max_seconds,
+            max_input_tokens=self.eval_cap.max_input_tokens,
+            max_output_tokens=self.eval_cap.max_output_tokens,
+            tool_call_weight=self.eval_cap.tool_call_weight,
+            compaction_threshold=float(evaluator_cfg.get("compaction_threshold", 0.9)),
+            code_context_budget=float(evaluator_cfg.get("code_context_budget", 0.7)),
+            source=self.eval_cap.source,
+        )
+
+    def _build_tools(self, evaluator_cfg: dict) -> list[Tool]:
+        """Build the evaluator's Tool objects (LLM schema + implementation).
+
+        Every entry in EVALUATOR_TOOLS maps to a ``_tool_*`` implementation;
+        sandbox tools are exempt from the runner's time-critical gating (they
+        must stay available when the wall-clock budget is nearly exhausted).
+        ``read_static_analysis`` stays config-gated.
+        """
+        impls: dict[str, Callable[..., Any] | None] = {
+            "read_file": self._tool_read_file,
+            "run_command": self._tool_run_command,
+            "search_pattern": self._tool_search_pattern,
+            "read_static_analysis": self._tool_read_static_analysis,
+            "read_lsp_diagnostics": self._tool_read_lsp_diagnostics,
+            "read_diff": self._tool_read_diff,
+            "get_task_item": self._tool_get_task_item,
+            "sandbox_write": self._tool_sandbox_write,
+            "sandbox_read": self._tool_sandbox_read,
+            "detect_dead_code": self._tool_detect_dead_code,
+            "skylos_scan": self._tool_skylos_scan,
+            "scan_security": self._tool_scan_security,
+        }
+        tools: list[Tool] = []
+        for schema in EVALUATOR_TOOLS:
+            fname = schema["function"]["name"]
+            tools.append(
+                Tool(
+                    name=fname,
+                    description=schema["function"]["description"],
+                    parameters=schema["function"].get("parameters"),
+                    fn=impls.get(fname),
+                    time_critical=fname not in ("sandbox_write", "sandbox_read"),
+                )
+            )
+        if not evaluator_cfg.get("static_analysis_diagnostics", False):
+            tools = [t for t in tools if t.name != "read_static_analysis"]
+        return tools
+
+    def _ensure_registry(self) -> ToolRegistry:
+        """Lazily build the tool registry used by direct (non-run) callers.
+
+        The evaluate() loop executes tools through a per-run registry created
+        inside AgentRunner.run(); this one serves ``_execute_tool_with_dedup``
+        / ``_execute_tool`` (backward-compat entry points, used by tests).
+        """
+        if self._registry is None:
+            self._registry = ToolRegistry(dedup_window=None)
+            for tool in self._build_tools(self._load_config().get("evaluator", {})):
+                self._registry.register(tool)
+        return self._registry
+
+    def _make_on_compact(
+        self, task: dict, code_context: str, criteria_total: int
+    ) -> Callable[[list[dict], int], list[dict]]:
+        """Build the runner's on_compact hook → criteria-progress compaction.
+
+        The compacted prompt (EVALUATION PROGRESS) is rebuilt from the
+        sandbox's ``verified_N`` keys so the model resumes with a clean
+        context and only the remaining criteria.
+        """
+
+        def on_compact(messages: list[dict], compaction_count: int) -> list[dict]:
+            new_messages, _ = self._compact_context(
+                messages, task, code_context, criteria_total, compaction_count
+            )
+            return new_messages
+
+        return on_compact
+
     def evaluate(self, task: dict) -> Verdict:
-        """Run the agentic loop against a task and return a verdict.
+        """Run the bounded criteria-evaluation loop; return a Verdict.
+
+        Delegates the loop to ``AgentRunner.run()`` (iteration/wall-clock/
+        token caps, compaction, dedup, bounded reads, sandbox, tool calling)
+        and maps runner outcomes back to the legacy Verdict API: budget
+        exhaustion yields a partial verdict from the sandbox when any
+        criterion was verified, else INCOMPLETE; transport errors yield
+        INCOMPLETE with the error in the summary.
 
         Args:
             task: dict with 'id', 'title', 'criteria' (list of strings)
@@ -908,8 +1061,8 @@ class AgenticEvaluator:
         Returns:
             Verdict with pass/fail for each criterion.
         """
-        # Reset state
-        self._sandbox.clear()
+        # Reset per-run state (sandbox + registry dedup are reset inside run())
+        self._registry = None
         self._files_read.clear()
         self._commands_run.clear()
         self._searches_done.clear()
@@ -981,233 +1134,35 @@ Output ONLY the JSON verdict when done — no markdown fences, no extra text."""
                     code_context += f"\n\n... [code context truncated: {ctx_est} → {max_ctx_tokens} estimated tokens]"
             task_prompt += f"\n\n{code_context}"
 
-        messages: list[dict] = [
-            {
-                "role": "system",
-                "content": self._system_prompt(),
-            },
-            {"role": "user", "content": task_prompt},
-        ]
+        budget = self._make_budget(config)
+        tools = self._build_tools(evaluator_cfg)
+        self._on_compact = self._make_on_compact(task, code_context, len(criteria_list))
 
-        # Per-request token cap — read from config (default 16384)
-        max_tokens_per_call = int(evaluator_cfg.get("max_tokens_per_call", 16384))
-
-        tools = list(EVALUATOR_TOOLS)  # copy
-        if not evaluator_cfg.get("static_analysis_diagnostics", False):
-            tools = [t for t in tools if t["function"]["name"] != "read_static_analysis"]  # type: ignore[index]
-
-        # Start tracking
-        self.eval_cap.start()
-
-        # Compaction state
-        MAX_COMPACTIONS = 3
-        compaction_count = 0
-        cumulative_prompt_tok = 0
-        criteria_total = len(criteria_list)
-
-        # Use while loop so we can reset iteration counter after compaction
-        iteration = 0
-        iter_limit = self.eval_cap.max_iterations_int
-
-        while iteration < iter_limit:
-            # Check caps (handles time/token limits even with unlimited iterations)
-            cap_error = self.eval_cap.check()
-            if cap_error:
-                logger.warning("Eval cap exceeded: %s", cap_error)
-                partial = self._extract_partial_verdict(criteria_list)
-                if partial is not None:
-                    return partial
-                return Verdict(
-                    verdict="INCOMPLETE",
-                    summary=f"Cap exceeded: {cap_error}",
-                )
-
-            # Proactive compaction: compact when context exceeds configured threshold
-            # (default 90% of input budget — 10% remaining)
-            if cumulative_prompt_tok > 0 and compaction_count < MAX_COMPACTIONS:
-                threshold_ratio = evaluator_cfg.get("compaction_threshold", 0.90)
-                threshold = int(self.eval_cap.max_input_tokens * threshold_ratio)
-                if cumulative_prompt_tok > threshold:
-                    logger.warning(
-                        "Context near limit (%d/%d tokens) — compacting (compaction #%d)",
-                        cumulative_prompt_tok,
-                        self.eval_cap.max_input_tokens,
-                        compaction_count + 1,
-                    )
-                    messages, compaction_count = self._compact_context(
-                        messages,
-                        task,
-                        code_context,
-                        criteria_total,
-                        compaction_count,
-                    )
-                    iteration = 0  # Reset — clean conversation
-                    cumulative_prompt_tok = 0
-                    self.eval_cap.reset_context_tracking()  # Fresh context = fresh token budget
-                    continue
-
-            try:
-                response = self.llm.chat(
-                    messages,
-                    tools=tools,
-                    max_tokens=max_tokens_per_call,
-                )
-            except Exception as e:
-                # Detect HTTP 400-499 errors (context window exceeded, etc.)
-                is_context_error = False
-                try:
-                    import requests
-
-                    if isinstance(e, requests.HTTPError):
-                        if hasattr(e, "response") and e.response is not None:
-                            status = e.response.status_code
-                            if 400 <= status < 500 and status != 429:
-                                is_context_error = True
-                except Exception:
-                    pass
-
-                # Also check error message for common context-window keywords
-                err_msg = str(e).lower()
-                if not is_context_error:
-                    is_context_error = any(
-                        kw in err_msg
-                        for kw in (
-                            "context",
-                            "token",
-                            "maximum",
-                            "exceeded",
-                            "window",
-                            "truncat",
-                            "length",
-                        )
-                    )
-
-                if is_context_error and compaction_count < MAX_COMPACTIONS:
-                    logger.warning(
-                        "Context error on iteration %d (compacting #%d): %s",
-                        iteration,
-                        compaction_count + 1,
-                        str(e)[:200],
-                    )
-                    messages, compaction_count = self._compact_context(
-                        messages,
-                        task,
-                        code_context,
-                        criteria_total,
-                        compaction_count,
-                    )
-                    iteration = 0  # Reset — fresh context
-                    cumulative_prompt_tok = 0
-                    self.eval_cap.reset_context_tracking()  # Fresh context = fresh token budget
-                    continue
-
-                logger.error("LLM call failed on iteration %d: %s", iteration, e)
-                return Verdict(
-                    verdict="INCOMPLETE",
-                    summary=f"Evaluator error: LLM call failed: {e}",
-                )
-
-            # Track LLM call (costs 1.0 iterations + token usage)
-            prompt_tok = response.usage.prompt_tokens if response.usage else 0
-            completion_tok = response.usage.completion_tokens if response.usage else 0
-            cache_read = response.usage.cache_read_tokens if response.usage else 0
-            cache_write = response.usage.cache_write_tokens if response.usage else 0
-
-            # Track cumulative prompt tokens for compaction threshold
-            cumulative_prompt_tok = max(cumulative_prompt_tok, prompt_tok)
-
-            cap_error = self.eval_cap.record_llm_call(
-                prompt_tokens=prompt_tok,
-                completion_tokens=completion_tok,
-                cache_read_tokens=cache_read,
-                cache_write_tokens=cache_write,
+        try:
+            return self.run(
+                system_prompt=self._system_prompt(),
+                user_prompt=task_prompt,
+                tools=tools,
+                output_schema=Verdict,
+                model_role="evaluator",
+                budget=budget,
             )
-            if cap_error:
-                logger.warning("Eval cap exceeded: %s", cap_error)
-                partial = self._extract_partial_verdict(criteria_list)
-                if partial is not None:
-                    return partial
-                return Verdict(
-                    verdict="INCOMPLETE",
-                    summary=f"Cap exceeded: {cap_error}",
-                )
-
-            # No tool calls → LLM is delivering a verdict
-            if not response.tool_calls:
-                if response.content:
-                    return self._parse_verdict(response.content)
-                return Verdict(
-                    verdict="INCOMPLETE",
-                    summary="Evaluator returned empty response.",
-                )
-
-            # Add assistant message with tool calls
-            assistant_msg: dict = {
-                "role": "assistant",
-                "content": response.content,
-                "tool_calls": [
-                    {
-                        "id": tc.id,
-                        "type": "function",
-                        "function": {
-                            "name": tc.name,
-                            "arguments": json.dumps(tc.arguments),
-                        },
-                    }
-                    for tc in response.tool_calls
-                ],
-            }
-            messages.append(assistant_msg)
-
-            # Execute each tool call — with dedup hints
-            for tc in response.tool_calls:
-                result, was_dup = self._execute_tool_with_dedup(tc)
-
-                # Track tool call (costs tool_call_weight, default 0.1 iterations)
-                cap_error = self.eval_cap.record_tool_call()
-                if cap_error:
-                    logger.warning("Eval cap exceeded during tool call: %s", cap_error)
-                    partial = self._extract_partial_verdict(criteria_list)
-                    if partial is not None:
-                        return partial
-                    return Verdict(
-                        verdict="INCOMPLETE",
-                        summary=f"Cap exceeded: {cap_error}",
-                    )
-
-                # Add dedup warning to result if this was a repeat
-                if was_dup:
-                    if isinstance(result, dict):
-                        result["_dedup_warning"] = (
-                            f"You already used {tc.name} with these arguments. "
-                            "See previous result above. Move on to unchecked criteria."
-                        )
-
-                messages.append(
-                    {
-                        "role": "tool",
-                        "tool_call_id": tc.id,
-                        "content": json.dumps(result),
-                    }
-                )
-
-            logger.debug(
-                "Evaluator iteration %d: %d tool calls, %d messages",
-                iteration + 1,
-                len(response.tool_calls),
-                len(messages),
-            )
-
-            iteration += 1
-
-        # Hit iteration cap — return clear error
-        msg = (
-            f"Cap exceeded: {self.eval_cap.summary()}. "
-            "Increase caps (eval_cap param or evaluator.cap in .gitreins/config.yaml) "
-            "or split criteria into focused single-criterion tasks."
-        )
-        logger.warning(msg)
-        return Verdict(verdict="INCOMPLETE", summary=msg)
+        except BudgetExceededError as e:
+            # Caps exhausted — salvage a partial verdict from the sandbox when
+            # any criterion was verified (2026-08-08: COMPLETE only if ALL
+            # verified criteria passed).
+            partial = self._extract_partial_verdict(criteria_list)
+            if partial is not None:
+                return partial
+            detail = str(e)
+            if detail.startswith("Cap exceeded: "):
+                detail = detail[len("Cap exceeded: "):]
+            msg = f"Cap exceeded: {detail}"
+            logger.warning(msg)
+            return Verdict(verdict="INCOMPLETE", summary=msg)
+        except AgentRunError as e:
+            logger.error("Evaluator error: %s", e)
+            return Verdict(verdict="INCOMPLETE", summary=f"Evaluator error: {e}")
 
     def _extract_partial_verdict(self, criteria_list: list[str]) -> Verdict | None:
         """Extract a best-effort verdict from sandbox when caps are exceeded.
@@ -1260,72 +1215,31 @@ Output ONLY the JSON verdict when done — no markdown fences, no extra text."""
     def _execute_tool_with_dedup(self, tc: ToolCall) -> tuple[dict, bool]:
         """Execute a tool and return (result, was_duplicate).
 
-        Time-budget check: before running an expensive tool
-        (read_file, run_command, search_pattern), verify the time cap
-        is not critical. If <10s remain, skip the tool and return a
-        TIME_CRITICAL error so the LLM can deliver a verdict immediately.
-        If over budget, return TIME_EXCEEDED.
+        Backward-compat entry point (tests + direct callers) delegating to
+        AgentRunner._execute_tool_call: whole-run dedup (same name+args →
+        duplicate), wall-clock gating for time-critical tools, and exception
+        wrapping. The evaluate() loop itself executes tools through the
+        per-run registry inside AgentRunner.run().
         """
-        # ── Time-budget pre-check (BEFORE dedup tracking) ─────────
-        # When time is critical we want to intercept quickly — don't
-        # pollute dedup state with skipped calls.
-        # remaining_seconds() returns -1.0 when no time budget is
-        # configured (unlimited) — we must NOT block in that case.
-        if tc.name in ("read_file", "run_command", "search_pattern"):
-            try:
-                remaining = self.eval_cap.remaining_seconds()
-            except Exception:
-                remaining = -1.0
-
-            if remaining < 0 and remaining != -1.0:
-                # Real negative remaining = over a configured budget
-                return (
-                    {
-                        "error": (
-                            "TIME_EXCEEDED: Time budget exhausted. "
-                            "Deliver your verdict immediately based on what is in the sandbox."
-                        )
-                    },
-                    False,
-                )
-            if 0 < remaining < 10:
-                return (
-                    {
-                        "error": (
-                            f"TIME_CRITICAL: Only {int(remaining)} seconds remaining. "
-                            "Deliver your verdict NOW with what you have. "
-                            "Use sandbox_write to save any verified criteria first."
-                        )
-                    },
-                    False,
-                )
-
-        was_dup = False
-
-        if tc.name == "read_file":
-            path = tc.arguments.get("path", "")
-            if path in self._files_read:
-                was_dup = True
-            else:
-                self._files_read.add(path)
-        elif tc.name == "run_command":
-            cmd = tc.arguments.get("cmd", "")
-            if cmd in self._commands_run:
-                was_dup = True
-            else:
-                self._commands_run.add(cmd)
-        elif tc.name == "search_pattern":
-            regex = tc.arguments.get("regex", "")
-            if regex in self._searches_done:
-                was_dup = True
-            else:
-                self._searches_done.add(regex)
-
-        result = self._execute_tool(tc)
-        return result, was_dup
+        registry = self._ensure_registry()
+        budget = Budget(
+            max_iterations=self.eval_cap.max_iterations,
+            max_time=self.eval_cap.max_seconds,
+            max_input_tokens=self.eval_cap.max_input_tokens,
+            max_output_tokens=self.eval_cap.max_output_tokens,
+            tool_call_weight=self.eval_cap.tool_call_weight,
+        )
+        budget.start()
+        result = self._execute_tool_call(tc, registry, budget)
+        output = result.output if isinstance(result.output, dict) else {"result": result.output}
+        return output, result.was_duplicate
 
     def _execute_tool(self, tc: ToolCall) -> dict:
-        """Execute a tool call and return the result."""
+        """Execute a tool call by name and return the result dict.
+
+        Backward-compat direct dispatch; the evaluate() loop executes tools
+        through the AgentRunner registry instead (same implementations).
+        """
         try:
             if tc.name == "read_file":
                 return self._tool_read_file(**tc.arguments)
@@ -1996,3 +1910,9 @@ Output ONLY the JSON verdict when done — no markdown fences, no extra text."""
             return {"error": "ast-grep not installed — cargo install ast-grep"}
         except Exception as e:
             return {"error": str(e)}
+
+
+# Backward-compatible alias — pipeline.py, judge.py, and existing tests
+# construct AgenticEvaluator; the class is now CriteriaEvaluator(AgentRunner)
+# (R2.3 Lane A refactor). The public API is unchanged: evaluate(task) -> Verdict.
+AgenticEvaluator = CriteriaEvaluator

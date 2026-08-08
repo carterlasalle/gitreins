@@ -84,18 +84,24 @@ class AgentRunner:
         max_compactions: int = 3,
         skip_duplicates: bool = False,
         on_compact: Callable[[list[dict], int], list[dict]] | None = None,
+        parser: Callable[[str], Any] | None = None,
     ):
         """``router`` resolves LLM clients per role; when None, one is built
         from ``config`` (or ``workdir/.gitreins/config.yaml`` when config is
         also None). ``on_compact`` receives (messages, compaction_count) and
         returns the fresh compacted message list; the default keeps the
-        system prompt and asks the model to continue from sandbox state."""
+        system prompt and asks the model to continue from sandbox state.
+        ``parser`` optionally replaces the output-schema parser for final
+        answers (default: ``parse_response`` against ``output_schema``) —
+        used by agents whose final-answer format needs custom leniency
+        (e.g. the CriteriaEvaluator's verdict parser)."""
         self.workdir = os.path.abspath(workdir)
         self.command_timeout = command_timeout
         self.max_tokens_per_call = max_tokens_per_call
         self.max_compactions = max_compactions
         self.skip_duplicates = skip_duplicates
         self._on_compact = on_compact
+        self._parser = parser
 
         if router is not None:
             self._router = router
@@ -240,6 +246,8 @@ class AgentRunner:
             if not response.tool_calls:
                 if response.content:
                     try:
+                        if self._parser is not None:
+                            return self._parser(response.content)
                         return parse_response(response.content, output_schema)
                     except SchemaError as e:
                         parse_error = e

@@ -137,7 +137,7 @@ class Budget:
             return (
                 f"Iteration cap ({_fmt_num(self.max_iterations)}) reached "
                 f"({_fmt_num(self.iteration_credit)} used). "
-                "Increase max_iterations or split the task."
+                "Increase max_iterations or split criteria."
             )
         self.iteration_credit += iterations
         self.cumulative_input_tokens += prompt_tokens + cache_read_tokens + cache_write_tokens
