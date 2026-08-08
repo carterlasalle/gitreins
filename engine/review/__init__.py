@@ -12,17 +12,20 @@ Lane B (defect discovery) runs as a DAG:
 The orchestrator also has a self-contained ``run(changed_files, diff)`` entry
 that drives the whole DAG (diff evidence → scout → optional retrieval →
 reviewers). The adversarial verifier (DESIGN_v2.md §9 verify_findings step,
-one :class:`VerifierAgent` per candidate finding) is R2.8; pipeline wiring is
-R2.16.
+one :class:`VerifierAgent` per candidate finding) is R2.8; the deterministic
+rank + dedup stages (ranker.py / dedup.py) and the batched comment writer
+(writer.py, :class:`CommentWriter`) are R2.9; pipeline wiring is R2.16.
 """
 
 from engine.review.context_builder import EvidencePlanner
+from engine.review.dedup import dedupe_findings
 from engine.review.orchestrator import (
     DEFAULT_REVIEWER_ROLES,
     ReviewOrchestrator,
     ReviewerResult,
     ReviewResult,
 )
+from engine.review.ranker import finding_to_dict, rank_findings
 from engine.review.reviewers import (
     ROLE_TO_REVIEWER,
     ContractReviewer,
@@ -41,6 +44,7 @@ from engine.review.verifier import (
     VerifierFinding,
     VerifierFindings,
 )
+from engine.review.writer import Comment, CommentBatch, CommentWriter
 
 __all__ = [
     "ScoutAgent",
@@ -65,4 +69,10 @@ __all__ = [
     "VerifierFindings",
     "VerifierCandidate",
     "BLOCK",
+    "rank_findings",
+    "finding_to_dict",
+    "dedupe_findings",
+    "CommentWriter",
+    "Comment",
+    "CommentBatch",
 ]
