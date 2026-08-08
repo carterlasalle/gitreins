@@ -36,13 +36,11 @@ Extract the good parts of `AgenticEvaluator` into `engine/agents/runner.py`:
 - [x] R2-3 engine/evaluator.py re-expressed as CriteriaEvaluator(AgentRunner) — alias keeps pipeline/judge callers; criteria prompt + MANDATORY TEST VERIFICATION + scan_security retained (3cd9b0e, 2026-08-08)
 - [x] R2-3 tests: 21 tests in test_criteria_evaluator.py (subclass/alias, run() delegation, budget wiring, compaction, hard-rule retention) — full suite 1314 passed, 8 skipped; judge verdict 30361ec4 (tier2 COMPLETE, 4/4 criteria PASS; tier1 lint FAIL = ruff-not-found judge-subprocess PATH artifact, tests+secrets PASS)
 
-### R2.4 — Evidence store (first-class Evidence type)
-- `engine/evidence/models.py`: `Evidence` dataclass (id, kind, source, file,
-  line_start/end, payload) + kinds enum.
-- `engine/evidence/store.py`: append/query/provenance.
-- `engine/evidence/provenance.py`.
-- Static-analysis findings become evidence producers (keep existing parsers;
-  wrap mypy/pyright/semgrep/ast-grep/trivy/gitleaks/etc. output as Evidence).
+### R2.4 — Evidence store (first-class Evidence type) ✅ 552ec26 + 5a0dc5f
+- [x] R2-4 engine/evidence/models.py: `Evidence` dataclass (id, kind, source, file, line_start/end, payload) + kinds enum (552ec26, 2026-08-08)
+- [x] R2-4 engine/evidence/store.py: append/query/provenance + engine/evidence/provenance.py (552ec26)
+- [x] R2-4 evidence producers wrapping analyzers: engine/analyzers/{semgrep,ast-grep,trivy,gitleaks}.py → Evidence (5a0dc5f)
+- [x] R2-4 tests: 33 evidence + 26 analyzer tests pass; guard PASS; judge verdict 08066aff/ef6fc473 (tier2 COMPLETE 4/4)
 
 ### R2.5 — Code Intelligence providers
 - `engine/codeintel/base.py`: `CodeIntelProvider` Protocol
