@@ -102,6 +102,10 @@ class GitReinsDefaults:
     # Metadata
     _source: str = field(default="(built-in defaults)", repr=False)
 
+    # ── Per-role model routing (R2.1 / DESIGN_v2.md §3) ──
+    # Passthrough of the top-level `review:` block (review.models).
+    review: dict | None = None
+
     def overlay(self, config_dict: dict | None) -> "GitReinsDefaults":
         """Return a new defaults object with config.yaml values overlaid.
 
@@ -235,6 +239,7 @@ class GitReinsDefaults:
             history_max_verdicts=int(
                 defaults.get("history_max_verdicts", self.history_max_verdicts)
             ),
+            review=config_dict.get("review", self.review),
             _source=".gitreins/config.yaml" if defaults else self._source,
         )
 

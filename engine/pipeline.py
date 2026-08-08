@@ -96,12 +96,13 @@ class StageResult:
 class Pipeline:
     """Execute a pipeline of stages against a task."""
 
-    def __init__(self, config: dict, workdir: str = ".", llm=None):
+    def __init__(self, config: dict, workdir: str = ".", llm=None, router=None):
         self.workdir = os.path.abspath(workdir)
         self.config = config
         self.stages: list[dict] = config.get("pipeline", {}).get("stages", [])
         self._stage_results: dict[str, StageResult] = {}
         self._llm = llm  # Can be injected by Judge
+        self._router = router  # ModelRouter — resolves a client per role (R2.1)
 
     def run(self, task: dict, trigger: str = "pre-eval") -> dict:
         """Run all stages that match the trigger.
@@ -271,7 +272,6 @@ class Pipeline:
         """Execute a shell command."""
         step_id = step_def.get("id", "unnamed")
         cmd = step_def.get("run", "")
-        on_fail = step_def.get("on_fail", "block")
 
         if not cmd:
             return StepResult(id=step_id, type="script", passed=False, error="No command specified")
@@ -323,14 +323,22 @@ class Pipeline:
         model = step_def.get("model")
         max_iterations = step_def.get("max_iterations", -1)
 
-        # Lazy init LLM client
-        if self._llm is None:
+        # Lazy init LLM client. When a ModelRouter is present and the step
+        # declares a role, resolve that role's client per invocation (R2.1);
+        # otherwise keep the legacy behavior (injected llm or env defaults).
+        llm = self._llm
+        if self._router is not None:
+            role = step_def.get("role")
+            if role:
+                llm = self._router.for_role(role)
+        if llm is None:
             from engine.llm import LLMClient
 
             if model:
-                self._llm = LLMClient(model=model)
+                llm = LLMClient(model=model)
             else:
-                self._llm = LLMClient()
+                llm = LLMClient()
+            self._llm = llm
 
         from engine.evaluator import AgenticEvaluator
         from engine.eval_cap import (
@@ -389,10 +397,10 @@ class Pipeline:
                     explicit_caps.get("tool_call_weight", base.tool_call_weight)
                 ),
             )
-            evaluator = AgenticEvaluator(self._llm, self.workdir, eval_cap=eval_cap)
+            evaluator = AgenticEvaluator(llm, self.workdir, eval_cap=eval_cap)
         else:
             # Nothing set in the step — defer to .gitreins/config.yaml
-            evaluator = AgenticEvaluator(self._llm, self.workdir)
+            evaluator = AgenticEvaluator(llm, self.workdir)
 
         # Build prompt with template substitution — the custom prompt_template
         # (if any) is passed to the evaluator as its system-prompt override so

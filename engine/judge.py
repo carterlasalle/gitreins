@@ -12,6 +12,7 @@ from engine.guard_manager import GuardManager, Tier1Result
 from engine.llm import LLMClient
 from engine.eval_cap import EvalCap
 from engine.pipeline import Pipeline, load_pipeline_config
+from engine.router import ModelRouter
 from engine.task_manager import Task
 
 logger = logging.getLogger("gitreins.judge")
@@ -89,8 +90,7 @@ class Judge:
                 if stage.get("type") == "ai_eval":
                     stage["condition"] = "false"
 
-        pipeline = Pipeline(config, self.workdir, llm=self.llm)
-
+        pipeline = Pipeline(config, self.workdir, llm=self.llm, router=ModelRouter(config))
         task_dict: dict[str, object] = {
             "id": task.id,
             "title": task.title,
@@ -247,7 +247,7 @@ class Judge:
     def run_precommit(self) -> bool:
         """Run pre-commit pipeline stages only. Returns True if commit should proceed."""
         config = load_pipeline_config(self.workdir)
-        pipeline = Pipeline(config, self.workdir, llm=self.llm)
+        pipeline = Pipeline(config, self.workdir, llm=self.llm, router=ModelRouter(config))
         result = pipeline.run(
             {"id": "_precommit", "title": "pre-commit", "criteria": []}, trigger="pre-commit"
         )
