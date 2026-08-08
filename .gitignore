@@ -49,10 +49,8 @@ hivemind-audit.md
 .gitreins/.gitreins/
 .gitreins/config.yaml.bak
 
-# Hilo — local cache files (rebuildable)
-.vfs/graph/graph.db
-.vfs/graph/graph.db.wal
-.vfs/graph/.last_warm
+# Hilo — local cache files (rebuildable; edges.jsonl/manifest churn per scan)
+.vfs/
 
 # Demo projects (own git repos, not part of GitReins source)
 demo-calc/
