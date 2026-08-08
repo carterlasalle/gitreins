@@ -76,13 +76,29 @@ Extract the good parts of `AgenticEvaluator` into `engine/agents/runner.py`:
   judge-subprocess PATH/env artifact, ruff-not-found + GITREINS_MAX_* leaking into
   subprocess pytest — identical on parent commit)
 
-### R2.8 — Adversarial verifier
-- `engine/review/verifier.py`: `VerifierAgent(AgentRunner)`; prompt = "disprove F<n>".
-  Processes each candidate finding independently (finding_id, claim, evidence,
-  verification_plan). Executes run_command/read_file/search_pattern + codeintel.
-- Structured finding shape (impact, patch_causality, reproducible,
-  execution_path_confirmed, verifier_confidence, developer_relevance) + **deterministic
-  BLOCK policy** (NOT LLM CVE scores). DESIGN §12.
+### R2.8 — Adversarial verifier ✅ e68b9d3 (judge tier2 COMPLETE 4/4 eda00fdb)
+- [x] `engine/review/verifier.py`: `VerifierAgent(AgentRunner)` (MODEL_ROLE=verifier);
+  falsification prompt "Your job is to DISPROVE F<n>" — CONFIRMED only if the
+  claim survives the agent's attempts to break it. Processes each candidate
+  finding independently via VerifierCandidate (finding_id, file, line, claim,
+  trigger, evidence refs, verification_plan). Executes run_command /
+  read_file / search_pattern + the 8 R2.5 codeintel tools. (e68b9d3, 2026-08-08)
+- [x] Structured finding shape VerifierFinding (impact, patch_causality,
+  reproducible, execution_path_confirmed, verifier_confidence,
+  developer_relevance) + verdict + **deterministic BLOCK policy** (pure fn,
+  no LLM): impact in {critical,high} AND causality==confirmed AND
+  execution_path_confirmed AND confidence>=0.90. DESIGN §12 exact. (e68b9d3)
+- [x] R2-8 tests: 40 hermetic (StubLLM, zero LLM calls) — exhaustive 120-row
+  BLOCK truth table + 0.90/0.89 boundary, confirmed/refuted runs, tool belt,
+  schema parse; review suites 81 + agents/pipeline 97 pass; ruff clean.
+  Judge verdict eda00fdb (tier2 COMPLETE 4/4; tier1 lint FAIL = ruff-not-found
+  judge-subprocess artifact — root-caused + FIXED below).
+- [x] INFRA-LINT-CMD fix (073ae19, judge PASS da467d23): `guards.lint_command`
+  was dead config — `_default_tier1_steps` hardcoded `ruff check .` and only
+  honored test_command/test_timeout, so every judge run since R2.5 failed
+  tier1 lint ("ruff: not found" in bare-shell subprocess). Now honors
+  `lint_command` (uv run ruff check .) mirroring test_command; 5 regression
+  tests (TestGuardsCommandOverrides). Next judge run = clean tier1.
 
 ### R2.9 — Ranker + dedup + comment writer
 - `engine/review/ranker.py`, `dedup.py`, `writer.py`.
