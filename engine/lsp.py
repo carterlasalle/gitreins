@@ -105,13 +105,22 @@ def normalize_severity(severity: int) -> str:
     return _SEVERITY_MAP.get(severity, "warning")
 
 
-def find_lsp_tool(tool_name: str) -> str | None:
+def find_lsp_tool(tool_name: str, workdir: str | None = None) -> str | None:
     binaries = _TOOL_BINARIES.get(tool_name, [tool_name])
     for binary in binaries:
         resolved = shutil.which(binary)
         path = os.path.abspath(resolved) if resolved else None
         if path:
             return path
+    # Fallback: the project's local venv bin dir. LSP tools like pylsp are
+    # usually installed in the project's .venv/bin, which is NOT on the bare
+    # subprocess PATH the judge/guard runs with — this makes them discoverable
+    # from the workdir regardless of PATH. (Fixed 2026-08-08)
+    if workdir:
+        for binary in binaries:
+            candidate = os.path.join(workdir, ".venv", "bin", binary)
+            if os.path.isfile(candidate) and os.access(candidate, os.X_OK):
+                return candidate
     return None
 
 
@@ -413,7 +422,7 @@ def run_lsp_check(
         init_timeout = init_t
     if timeout_per_file is None:
         timeout_per_file = per_file_t
-    tool_path = find_lsp_tool(tool)
+    tool_path = find_lsp_tool(tool, workdir=workdir)
     if not tool_path:
         logger.warning("LSP tool '%s' not found on PATH — skipping", tool)
         return []

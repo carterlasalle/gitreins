@@ -5,6 +5,12 @@ guards:
   test_mode: diff
   test_command: uv run pytest -x --tb=short
   test_timeout: 900
+  # lint_command resolves ruff through uv so the GitReins judge subprocess
+  # (bare shell, .venv/bin not on its PATH) can find it. 'uv run ruff' works
+  # from any PATH that has uv (login shell). Fixed 2026-08-08 — was failing
+  # tier1 lint in every judge run with "ruff: command not found".
+  lint_command: uv run ruff check .
+  lint_mode: full
   dead_code: false
   skylos: false
   static_analysis: false

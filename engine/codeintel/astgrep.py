@@ -24,8 +24,11 @@ from engine.codeintel.base import CodeIntelUnavailableError
 
 logger = logging.getLogger("gitreins.codeintel.astgrep")
 
-# Binary names searched in order (sg is the canonical ast-grep binary name).
-_BINARIES = ("sg", "ast-grep")
+# Binary names searched in order. Prefer `ast-grep` over `sg`: on some systems
+# `/usr/bin/sg` is GNU screen (the multiplexer), NOT ast-grep — resolving `sg`
+# to it made every search return 0 matches with "non-JSON output". `ast-grep`
+# is the canonical name and never collides. (Fixed 2026-08-08)
+_BINARIES = ("ast-grep", "sg")
 
 
 @dataclass
