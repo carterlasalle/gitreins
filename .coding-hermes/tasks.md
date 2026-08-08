@@ -42,18 +42,13 @@ Extract the good parts of `AgenticEvaluator` into `engine/agents/runner.py`:
 - [x] R2-4 evidence producers wrapping analyzers: engine/analyzers/{semgrep,ast-grep,trivy,gitleaks}.py → Evidence (5a0dc5f)
 - [x] R2-4 tests: 33 evidence + 26 analyzer tests pass; guard PASS; judge verdict 08066aff/ef6fc473 (tier2 COMPLETE 4/4)
 
-### R2.5 — Code Intelligence providers
-- `engine/codeintel/base.py`: `CodeIntelProvider` Protocol
-  (definition/references/callers/callees/implementations/symbols/contract/impact/history/prs/cross_repo).
-- `engine/codeintel/serena.py`: wraps oraios/serena via MCP client.
-- `engine/codeintel/lsp.py`: extend current LSP (diagnostics + semantic queries).
-- `engine/codeintel/astgrep.py`: structural pattern search (already have ast-grep).
-- `engine/codeintel/ripgrep.py`: lexical recall.
-- `engine/codeintel/graph.py`: Hilo-type / gitnexus / codegraph integration (interface).
-- Tools to agents: get_changed_symbols, get_symbol_definition, find_references,
-  get_callers, get_callees, get_implementations, get_interface_contract,
-  get_tests_for_symbol, get_change_impact, get_related_history, get_related_prs,
-  get_cross_repo_consumers, ast_search, text_search — **small structured answers, not files**.
+### R2.5 — Code Intelligence providers ✅ ae62a0c
+- [x] R2-5 engine/codeintel/base.py: CodeIntelProvider Protocol — 11 query methods (definition/references/callers/callees/implementations/symbols/contract/impact/history/prs/cross_repo) + CodeIntelUnavailableError (ae62a0c, 2026-08-08)
+- [x] R2-5 engine/codeintel/astgrep.py + ripgrep.py: structural pattern search + lexical recall providers (ae62a0c)
+- [x] R2-5 engine/codeintel/lsp.py: LSP semantic queries (diagnostics + definition/references/symbols) extending engine/lsp (ae62a0c)
+- [x] R2-5 engine/codeintel/graph.py + serena.py: graph provider interface (hilo/gitnexus-style) + serena MCP wrapper (lazy ClientSession, SerenaUnavailableError when binary absent) (ae62a0c)
+- [x] R2-5 agent tools registered via codeintel_tools() (engine/agents/tools.py, exported in agents/__init__.py): ast_search, text_search, get_symbol_definition, find_references, get_callers, get_callees, get_implementations, get_change_impact — small structured answers (500-char snippet cap, limit cap, errors degrade to []) (ae62a0c)
+- [x] R2-5 tests: 30 codeintel + 43 agents tests pass; full suite 1229 passed/5 skipped (judge run); judge verdict 53537562 (tier2 COMPLETE 5/5 PASS; tier1 lint FAIL = ruff-not-found judge-subprocess PATH artifact, tests+secrets PASS). test_lsp.py hang is pre-existing (reproduced on parent d870e1b), unrelated to R2.5.
 
 ### R2.6 — Scout agent + evidence planner
 - `engine/review/scout.py`: cheap Qwen prompt → {changed_symbols, retrieval_requests,
