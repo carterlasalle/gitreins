@@ -9,6 +9,8 @@ Extracted from the monolithic AgenticEvaluator (engine/evaluator.py):
   window, stopping cheap models going in circles)
 - ``read_file_bounded`` — path-safe file reads with byte/line caps
 - ``make_read_file_tool`` — a bounded read_file Tool bound to a base dir
+- ``codeintel_tools`` — R2.5 code-intelligence tools (ast_search, …) built
+  on the engine/codeintel providers (lazy import to avoid a module cycle)
 - ``sandbox_tools`` — scratch-space read/write tools over a plain dict
 """
 
@@ -446,3 +448,19 @@ def sandbox_tools(sandbox: dict[str, str], *, max_read_chars: int = 4000) -> lis
             time_critical=False,
         ),
     ]
+
+
+def codeintel_tools(
+    base_dir: str,
+    provider: Any | None = None,
+) -> list[Tool]:
+    """R2.5 code-intelligence tools: ast_search / text_search / get_symbol_definition /
+    find_references / get_callers / get_callees / get_implementations / get_change_impact.
+
+    Lazy import of ``engine.codeintel.tools`` keeps the module graph acyclic
+    (codeintel/tools.py imports ``Tool`` from this module). Each tool returns
+    small structured JSON (file/line/symbol/kind) — never raw file dumps.
+    """
+    from engine.codeintel.tools import make_codeintel_tools
+
+    return make_codeintel_tools(workdir=base_dir, provider=provider)
