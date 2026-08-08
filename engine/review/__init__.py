@@ -11,7 +11,9 @@ Lane B (defect discovery) runs as a DAG:
 
 The orchestrator also has a self-contained ``run(changed_files, diff)`` entry
 that drives the whole DAG (diff evidence → scout → optional retrieval →
-reviewers). The adversarial verifier (verify_findings) is R2.8.
+reviewers). The adversarial verifier (DESIGN_v2.md §9 verify_findings step,
+one :class:`VerifierAgent` per candidate finding) is R2.8; pipeline wiring is
+R2.16.
 """
 
 from engine.review.context_builder import EvidencePlanner
@@ -32,6 +34,13 @@ from engine.review.reviewers import (
     serialize_evidence,
 )
 from engine.review.scout import ChangedSymbol, RetrievalRequest, ScoutAgent, ScoutPlan
+from engine.review.verifier import (
+    BLOCK,
+    VerifierAgent,
+    VerifierCandidate,
+    VerifierFinding,
+    VerifierFindings,
+)
 
 __all__ = [
     "ScoutAgent",
@@ -51,4 +60,9 @@ __all__ = [
     "ReviewOrchestrator",
     "ReviewerResult",
     "ReviewResult",
+    "VerifierAgent",
+    "VerifierFinding",
+    "VerifierFindings",
+    "VerifierCandidate",
+    "BLOCK",
 ]
