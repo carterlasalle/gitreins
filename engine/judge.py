@@ -128,16 +128,16 @@ class Judge:
                 logger.warning(
                     "Pipeline execution failed but pass_on_error=True — returning pass",
                 )
-            return JudgeResult(
-                task_id=task.id,
-                passed=True,
-                tier1=Tier1Result(
+                return JudgeResult(
+                    task_id=task.id,
                     passed=True,
-                    results=[],
-                    extra={"pass_on_error": True},
-                ),
-                pipeline_result={"error": str(e), "pass_on_error": True},
-            )
+                    tier1=Tier1Result(
+                        passed=True,
+                        results=[],
+                        extra={"pass_on_error": True},
+                    ),
+                    pipeline_result={"error": str(e), "pass_on_error": True},
+                )
             logger.exception("Pipeline execution failed")
             return JudgeResult(task_id=task.id, passed=False, pipeline_result={"error": str(e)})
 

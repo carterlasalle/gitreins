@@ -413,6 +413,10 @@ class AgenticEvaluator:
         self.command_timeout = command_timeout
 
         self._sandbox: dict[str, str] = {}
+        # Custom system-prompt override from a pipeline prompt_template; set by
+        # evaluate() from the task dict. Initialize to None so _system_prompt()
+        # is always safe to call (2026-08-08).
+        self._system_prompt_override: str | None = None
         self._task_index: dict[str, dict] = {}
         self._files_read: set[str] = set()
         self._commands_run: set[str] = set()
@@ -827,6 +831,37 @@ class AgenticEvaluator:
 
         return prompt
 
+    def _system_prompt(self) -> str:
+        """Return the evaluator system prompt: the pipeline-provided
+        `prompt_template` override when set, else the built-in prompt.
+        Token/file-scope/fast-track placeholders are substituted either way.
+        (2026-08-08: prompt_template is now actually wired through.)"""
+        base = self._system_prompt_override or EVALUATOR_SYSTEM_PROMPT
+        return (
+            base.replace(
+                "{token_budget}",
+                _fmt_tokens(self.eval_cap.max_input_tokens)
+                if self.eval_cap.max_input_tokens > 0
+                else "unlimited",
+            )
+            .replace(
+                "{output_budget}",
+                _fmt_tokens(self.eval_cap.max_output_tokens)
+                if self.eval_cap.max_output_tokens > 0
+                else "unlimited",
+            )
+            .replace("{file_scope}", self._allowed_files is not None and "changed" or "full")
+            .replace("{fast_track_mode}", "ON" if self.fast_track else "OFF")
+            .replace(
+                "{fast_track_instruction}",
+                "ON — Verify ONLY changed lines and immediate callers. Skip deep call-graph analysis. "
+                "Trust the diff: if a criterion references code outside changed files, check only the "
+                "interface boundary (function signature, type) — do NOT trace into unchanged code."
+                if self.fast_track
+                else "OFF — Normal mode. Read surrounding code as needed to verify criteria.",
+            )
+        )
+
     def _compact_context(
         self,
         messages: list[dict],
@@ -857,28 +892,7 @@ class AgenticEvaluator:
         new_messages: list[dict] = [
             {
                 "role": "system",
-                "content": EVALUATOR_SYSTEM_PROMPT.replace(
-                    "{token_budget}",
-                    _fmt_tokens(self.eval_cap.max_input_tokens)
-                    if self.eval_cap.max_input_tokens > 0
-                    else "unlimited",
-                )
-                .replace(
-                    "{output_budget}",
-                    _fmt_tokens(self.eval_cap.max_output_tokens)
-                    if self.eval_cap.max_output_tokens > 0
-                    else "unlimited",
-                )
-                .replace("{file_scope}", self._allowed_files is not None and "changed" or "full")
-                .replace("{fast_track_mode}", "ON" if self.fast_track else "OFF")
-                .replace(
-                    "{fast_track_instruction}",
-                    "ON — Verify ONLY changed lines and immediate callers. Skip deep call-graph analysis. "
-                    "Trust the diff: if a criterion references code outside changed files, check only the "
-                    "interface boundary (function signature, type) — do NOT trace into unchanged code."
-                    if self.fast_track
-                    else "OFF — Normal mode. Read surrounding code as needed to verify criteria.",
-                ),
+                "content": self._system_prompt(),
             },
             {"role": "user", "content": compacted_prompt},
         ]
@@ -899,6 +913,10 @@ class AgenticEvaluator:
         self._files_read.clear()
         self._commands_run.clear()
         self._searches_done.clear()
+
+        # Custom system-prompt override from a pipeline prompt_template, if
+        # any (2026-08-08 fix — was never wired through before).
+        self._system_prompt_override = task.get("_system_prompt_override")
 
         # Build the task prompt
         criteria_list = task.get("criteria", [])
@@ -966,28 +984,7 @@ Output ONLY the JSON verdict when done — no markdown fences, no extra text."""
         messages: list[dict] = [
             {
                 "role": "system",
-                "content": EVALUATOR_SYSTEM_PROMPT.replace(
-                    "{token_budget}",
-                    _fmt_tokens(self.eval_cap.max_input_tokens)
-                    if self.eval_cap.max_input_tokens > 0
-                    else "unlimited",
-                )
-                .replace(
-                    "{output_budget}",
-                    _fmt_tokens(self.eval_cap.max_output_tokens)
-                    if self.eval_cap.max_output_tokens > 0
-                    else "unlimited",
-                )
-                .replace("{file_scope}", self._allowed_files is not None and "changed" or "full")
-                .replace("{fast_track_mode}", "ON" if self.fast_track else "OFF")
-                .replace(
-                    "{fast_track_instruction}",
-                    "ON — Verify ONLY changed lines and immediate callers. Skip deep call-graph analysis. "
-                    "Trust the diff: if a criterion references code outside changed files, check only the "
-                    "interface boundary (function signature, type) — do NOT trace into unchanged code."
-                    if self.fast_track
-                    else "OFF — Normal mode. Read surrounding code as needed to verify criteria.",
-                ),
+                "content": self._system_prompt(),
             },
             {"role": "user", "content": task_prompt},
         ]
@@ -1244,10 +1241,20 @@ Output ONLY the JSON verdict when done — no markdown fences, no extra text."""
                 )
         if not has_any:
             return None
+        # A partial verdict must reflect whether ALL criteria passed, not just
+        # whether ANY were verified. Previously this returned COMPLETE whenever
+        # at least one criterion was checked, so a run that hit the cap after
+        # one PASS (with the rest marked FAIL — Not verified) still reported
+        # COMPLETE and the pipeline passed the task. (2026-08-08 fix)
+        complete = all(item.status == "PASS" for item in items)
         return Verdict(
-            verdict="COMPLETE",
+            verdict="COMPLETE" if complete else "INCOMPLETE",
             items=items,
-            summary="Partial verdict — evaluation hit resource cap before all criteria verified",
+            summary=(
+                "Partial verdict — evaluation hit resource cap before all criteria verified"
+                if not complete
+                else "Partial verdict — all verified criteria passed"
+            ),
         )
 
     def _execute_tool_with_dedup(self, tc: ToolCall) -> tuple[dict, bool]:
