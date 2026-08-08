@@ -61,12 +61,20 @@ Extract the good parts of `AgenticEvaluator` into `engine/agents/runner.py`:
 - [x] DOCS-000 docs pass (re-run 2026-08-08): README v2 architecture section +
   docs/architecture-v2.md runbook (cc86d1a).
 
-### R2.7 — Review agents (Lane B: defect discovery)
-- `engine/review/orchestrator.py`: runs the review DAG.
-- `engine/review/reviewers.py`: runtime/contract/security review agents, each an
-  AgentRunner with a distinct objective, given the same evidence store.
-- Parallel via ThreadPoolExecutor (pipeline already supports it).
-- New pipeline stage types: `review_agent` (with `role`), `verify_findings`.
+### R2.7 — Review agents (Lane B: defect discovery) ✅ 45add46 (judge COMPLETE e92bac86)
+- [x] R2-7 engine/review/orchestrator.py: ReviewOrchestrator runs the review DAG —
+  diff evidence → ScoutAgent → EvidencePlanner (when provider set) → parallel
+  reviewers via ThreadPoolExecutor, per-lane error capture, findings merged (45add46, 2026-08-08)
+- [x] R2-7 engine/review/reviewers.py: RuntimeReviewer / ContractReviewer /
+  SecurityReviewer — each AgentRunner subclass (MODEL_ROLE + distinct OBJECTIVE),
+  same EvidenceStore serialized into each lane's user prompt (45add46)
+- [x] R2-7 pipeline stage type `review_agent` (with `role`) wired into
+  engine/pipeline.py — dispatches runtime/contracts/security_edges roles,
+  findings plumbed onto task['findings'], parallel via existing ThreadPoolExecutor (45add46)
+- [x] R2-7 tests: 65 hermetic tests (StubLLM, per-role routers, zero LLM calls) —
+  targeted 162 passed; judge verdict e92bac86 (tier2 COMPLETE 4/4; tier1 FAIL =
+  judge-subprocess PATH/env artifact, ruff-not-found + GITREINS_MAX_* leaking into
+  subprocess pytest — identical on parent commit)
 
 ### R2.8 — Adversarial verifier
 - `engine/review/verifier.py`: `VerifierAgent(AgentRunner)`; prompt = "disprove F<n>".
