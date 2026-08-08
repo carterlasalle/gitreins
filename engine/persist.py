@@ -265,7 +265,11 @@ class VerdictPersister:
                 json.JSONDecodeError,
                 UnicodeDecodeError,
             ) as e:
-                logger.warning("Failed to read verdict %s from gitreins branch (non-fatal): %s", path, e)
+                logger.warning(
+                    "Failed to read verdict %s from gitreins branch (non-fatal): %s",
+                    path,
+                    e,
+                )
                 continue
             if task_id and data.get("task_id") != task_id:
                 continue
@@ -290,7 +294,11 @@ class VerdictPersister:
                 date_path = os.path.join(self.history_dir, date_dir)
                 if os.path.isdir(date_path):
                     count += len(
-                        [d for d in os.listdir(date_path) if os.path.isdir(os.path.join(date_path, d))]
+                        [
+                            d
+                            for d in os.listdir(date_path)
+                            if os.path.isdir(os.path.join(date_path, d))
+                        ]
                     )
         if count == 0 and self.storage_mode == "git":
             return self._count_branch_verdicts()
@@ -312,7 +320,11 @@ class VerdictPersister:
             return 0
         if result.returncode != 0:
             return 0
-        return sum(1 for line in result.stdout.splitlines() if line.strip().endswith("/verdict.json"))
+        return sum(
+            1
+            for line in result.stdout.splitlines()
+            if line.strip().endswith("/verdict.json")
+        )
 
     # ── Internal ─────────────────────────────────────────────
 
