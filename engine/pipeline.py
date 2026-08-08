@@ -58,7 +58,7 @@ logger = logging.getLogger("gitreins.pipeline")
 @dataclass
 class StepResult:
     id: str
-    type: str  # "script" | "ai_eval" | "output"
+    type: str  # "script" | "ai_eval" | "output" | "review_agent" | "commit_audit"
     passed: bool = True
     output: str = ""
     error: str = ""
@@ -238,6 +238,8 @@ class Pipeline:
             step_result = self._run_ai_eval(stage_def, task)
         elif stage_def.get("type") == "commit_audit":
             step_result = self._run_commit_audit(stage_def, task)
+        elif stage_def.get("type") == "review_agent":
+            step_result = self._run_review_agent(stage_def, task)
         elif stage_def.get("type") == "output":
             step_result = self._run_output(stage_def, task)
         else:
@@ -261,6 +263,8 @@ class Pipeline:
             return self._run_ai_eval(step_def, task)
         elif step_type == "commit_audit":
             return self._run_commit_audit(step_def, task)
+        elif step_type == "review_agent":
+            return self._run_review_agent(step_def, task)
         elif step_type == "output":
             return self._run_output(step_def, task)
         else:
@@ -638,6 +642,129 @@ class Pipeline:
             except Exception:
                 pass
         return {}
+
+    def _run_review_agent(self, step_def: dict, task: dict) -> StepResult:
+        """Run one Lane-B review agent as a pipeline step (R2.7).
+
+        Config keys:
+          ``role`` — required; one of runtime | contracts | security_edges
+          (or the ``*_reviewer`` spellings). Maps to a ReviewAgent subclass
+          via ``ROLE_TO_REVIEWER``.
+          ``budget`` — optional ``{max_iterations, max_time, ...}`` dict
+          overriding the evaluator block for this step.
+
+        The agent reads the task's evidence (``task["evidence_store"]`` — an
+        EvidenceStore instance — or ``task["evidence"]`` — a list of Evidence
+        dicts) plus ``changed_files`` / ``diff`` context, and runs with the
+        pipeline's ModelRouter (per-role model routing, R2.1). Findings are
+        attached to ``task["findings"]`` so later stages can consume them.
+        A reviewer failure is captured as an error StepResult and never
+        propagates — parallel lanes keep running.
+        """
+        step_id = step_def.get("id", "review_agent")
+        role = step_def.get("role")
+        if not role:
+            return StepResult(
+                id=step_id,
+                type="review_agent",
+                passed=False,
+                error="review_agent step requires a 'role' (runtime, contracts, security_edges)",
+            )
+
+        from engine.agents import Budget
+        from engine.review import ROLE_TO_REVIEWER
+
+        reviewer_cls = ROLE_TO_REVIEWER.get(role)
+        if reviewer_cls is None:
+            return StepResult(
+                id=step_id,
+                type="review_agent",
+                passed=False,
+                error=(
+                    f"Unknown review_agent role: {role!r} "
+                    "(expected runtime, contracts, or security_edges)"
+                ),
+            )
+        model_role = reviewer_cls.MODEL_ROLE
+
+        try:
+            router = self._router
+            if router is None:
+                from engine.router import ModelRouter
+
+                router = ModelRouter(self.config)
+            agent = reviewer_cls(router=router, workdir=self.workdir)
+
+            store = self._task_evidence_store(task)
+            changed_files = task.get("changed_files") or task.get("files")
+            diff_context = task.get("diff") or task.get("diff_context") or ""
+            lenses = task.get("review_lenses")
+
+            step_budget_cfg = step_def.get("budget") or {}
+            budget = Budget.from_config(self.config)
+            if step_budget_cfg:
+                for key, value in step_budget_cfg.items():
+                    if hasattr(budget, key):
+                        setattr(budget, key, value)
+
+            findings = agent.run(
+                store,
+                changed_files=changed_files,
+                diff_context=diff_context,
+                lenses=lenses,
+                budget=budget,
+            )
+            items = list(findings.findings) if findings is not None else []
+            findings_dicts = [f.to_dict() for f in items]
+
+            # Findings plumbing: later stages consume task["findings"].
+            task.setdefault("findings", []).extend(findings_dicts)
+
+            summary = findings.summary if findings is not None else ""
+            output = f"{model_role}: {len(items)} finding(s)"
+            if summary:
+                output += f" — {summary[:200]}"
+            return StepResult(
+                id=step_id,
+                type="review_agent",
+                passed=True,
+                output=output,
+                data={
+                    "role": model_role,
+                    "count": len(items),
+                    "findings": findings_dicts,
+                },
+            )
+        except Exception as e:  # noqa: BLE001 — step boundary: report, don't crash the DAG
+            logger.exception("review_agent step %s failed", step_id)
+            return StepResult(
+                id=step_id, type="review_agent", passed=False, error=str(e)
+            )
+
+    def _task_evidence_store(self, task: dict):
+        """Resolve the task's evidence store, or None when the task carries none.
+
+        Accepts an ``EvidenceStore`` instance under ``task["evidence_store"]``
+        or a list of Evidence dicts under ``task["evidence"]`` (rebuilt via
+        ``Evidence.from_dict``). Reviewers fall back to an empty store when
+        this returns None.
+        """
+        from engine.evidence import Evidence, EvidenceStore
+
+        store = task.get("evidence_store")
+        if isinstance(store, EvidenceStore):
+            return store
+        items = task.get("evidence")
+        if isinstance(items, list):
+            rebuilt = EvidenceStore()
+            for d in items:
+                if isinstance(d, dict):
+                    try:
+                        rebuilt.append(Evidence.from_dict(d))
+                    except (KeyError, ValueError):
+                        continue
+            return rebuilt
+        return None
 
     def _run_output(self, step_def: dict, task: dict) -> StepResult:
         """Compile output from all stages."""
