@@ -418,6 +418,32 @@ class Pipeline:
                 for i in verdict.items
             )
 
+            # Persist the judge's real token usage so external tools (e.g. the
+            # coding-hermes scheduler dashboard) can sum GitReins judge cost
+            # alongside foreman/worker cost. GitReins uses its own LLM client,
+            # so its usage never appears in Hermes' state.db telemetry; without
+            # this, judge cost was invisible. Append to .gitreins/usage.jsonl,
+            # timestamped, one JSON line per judge run. Best-effort — never
+            # blocks or fails the eval on a write error. (2026-08-08)
+            try:
+                import json as _uj, os as _uos, time as _time
+                _cap = getattr(evaluator, "eval_cap", None)
+                if _cap is not None:
+                    usage_line = {
+                        "ts": _time.time(),
+                        "tokens_in": getattr(_cap, "cumulative_input_tokens", 0),
+                        "tokens_out": getattr(_cap, "cumulative_output_tokens", 0),
+                        "cache_read": getattr(_cap, "cumulative_cache_read", 0),
+                        "cache_write": getattr(_cap, "cumulative_cache_write", 0),
+                        "step": step_id,
+                    }
+                    usage_path = _uos.path.join(self.workdir, ".gitreins", "usage.jsonl")
+                    _uos.makedirs(_uos.path.dirname(usage_path), exist_ok=True)
+                    with open(usage_path, "a") as _f:
+                        _f.write(_uj.dumps(usage_line) + "\n")
+            except Exception:
+                pass  # non-fatal
+
             return StepResult(
                 id=step_id,
                 type="ai_eval",
