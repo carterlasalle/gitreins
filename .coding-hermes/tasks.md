@@ -101,45 +101,50 @@ Extract the good parts of `AgenticEvaluator` into `engine/agents/runner.py`:
   tests (TestGuardsCommandOverrides). Next judge run = clean tier1.
 
 ### R2.9 — Ranker + dedup + comment writer
-- `engine/review/ranker.py`, `dedup.py`, `writer.py`.
-- Writer batched; findings deduped by evidence overlap + usefulness.
+- [ ] R2-9 engine/review/ranker.py — findings ranked by evidence overlap + usefulness
+- [ ] R2-9 engine/review/dedup.py — dedupe findings by evidence overlap
+- [ ] R2-9 engine/review/writer.py — batched comment writer (GitHub/agent)
+- [ ] R2-9 tests: ranker/dedup/writer hermetic tests
 
 ### R2.10 — ChangeSource abstraction (local + GitHub PR)
-- `engine/github/checkout.py` + `ChangeSource` Protocol (diff/changed_files/base_sha/head_sha).
-- WorkingTreeChangeSource, PullRequestChangeSource, CommitRangeChangeSource.
-- Same reviewer runs locally (pre-commit) and on GitHub PR.
-- `engine/github/app.py`, `publisher.py`, `checks.py` (PR review surface).
+- [ ] R2-10 engine/github/checkout.py + ChangeSource Protocol (diff/changed_files/base_sha/head_sha)
+- [ ] R2-10 WorkingTreeChangeSource, PullRequestChangeSource, CommitRangeChangeSource
+- [ ] R2-10 same reviewer runs locally (pre-commit) and on GitHub PR
+- [ ] R2-10 engine/github/app.py, publisher.py, checks.py (PR review surface)
+- [ ] R2-10 tests: ChangeSource implementations + PR review smoke
 
 ### R2.11 — PR service-mode sandbox
-- Review job runs in ephemeral container/microVM: clone PR, NO prod credentials,
-  NO host fs, NO docker socket, network default-deny, resource caps.
-- `engine/github/sandbox.py`. Verifier runs inside.
+- [ ] R2-11 engine/github/sandbox.py — ephemeral container/microVM (clone PR, NO prod credentials, NO host fs, NO docker socket, network default-deny, resource caps)
+- [ ] R2-11 verifier runs inside the sandbox
+- [ ] R2-11 tests: sandbox isolation + verifier-in-sandbox
 
 ### R2.12 — Intent system (consume GitReins tasks)
-- `engine/task_manager.py`: when a PR links an issue and a task exists, consume it
-  as intent context (criteria). Do NOT auto-create. REVIEW gets both intent + defect context.
-- Feed task criteria into Lane A (requirements) alongside Lane B.
+- [ ] R2-12 engine/task_manager.py — consume existing tasks as intent context (do NOT auto-create)
+- [ ] R2-12 feed task criteria into Lane A (requirements) alongside Lane B
+- [ ] R2-12 tests: task-consume + intent/defect context merge
 
 ### R2.13 — Rich review history + provenance + ReviewLearning
-- `review_runs/<sha>/` artifacts (manifest, change, static-evidence, scout,
-  candidates, verification, final-findings, requirements, usage).
-- Final findings carry generated_by + verified_by provenance.
-- `ReviewLearning`: developer accept/reject → durable rule scoped by repo+paths,
-  retrieved only for relevant code.
+- [ ] R2-13 review_runs/<sha>/ artifacts (manifest, change, static-evidence, scout, candidates, verification, final-findings, requirements, usage)
+- [ ] R2-13 final findings carry generated_by + verified_by provenance
+- [ ] R2-13 ReviewLearning — developer accept/reject → durable rule scoped by repo+paths
+- [ ] R2-13 tests: provenance + ReviewLearning retrieval
 
 ### R2.14 — propagate → propagate_policy + cross-repo impact
-- Rename conceptual purpose; add `get_cross_repo_impact()` via graph provider.
+- [ ] R2-14 rename conceptual purpose of propagate to propagate_policy
+- [ ] R2-14 add get_cross_repo_impact() via graph provider
+- [ ] R2-14 tests: policy propagate + cross-repo impact
 
 ### R2.15 — Replace CodeRabbit-ish reviewer
-- Delete `COMMIT_REVIEW_SYSTEM_PROMPT` / current commit-review orchestration.
-- Keep `CommitAuditor` for actual commit-message auditing.
-- Code review = its own subsystem (the review DAG above). `commit_audit_review_mode`
-  no longer drives review.
+- [ ] R2-15 delete COMMIT_REVIEW_SYSTEM_PROMPT / current commit-review orchestration
+- [ ] R2-15 keep CommitAuditor for actual commit-message auditing
+- [ ] R2-15 code review = its own subsystem (review DAG); commit_audit_review_mode no longer drives review
+- [ ] R2-15 tests: CommitAuditor kept, review DAG independent
 
 ### R2.16 — Review DAG wiring + `gitreins review` entrypoint
-- Wire the full `review_pipeline` (DESIGN §17) into the Pipeline.
-- Add `gitreins review` command (local ChangeSource) + `gitreins review --pr <n>`.
-- Criteria eval (Lane A) + defect review (Lane B) → combined review.
+- [ ] R2-16 wire full review_pipeline (DESIGN §17) into the Pipeline
+- [ ] R2-16 add `gitreins review` command (local ChangeSource) + `gitreins review --pr <n>`
+- [ ] R2-16 criteria eval (Lane A) + defect review (Lane B) → combined review
+- [ ] R2-16 tests: review DAG E2E + gitreins review CLI
 
 ## NEVER-DONE (audit — run only when board is empty)
 - Full regression: `gitreins guard`, evaluator suite, review DAG E2E against a
