@@ -21,7 +21,10 @@
 - [x] R2-1 engine/router.py ModelRouter.for_role(role) + review.models.<role> config + env fallback + Pipeline/Judge wiring (b0420b9, 2026-08-08)
 - [x] R2-1 tests: 11 tests (per-role, fallback, caching, pipeline integration) — 96 router/pipeline/judge + 117 evaluator tests pass
 
-### R2.2 — AgentRunner (generic bounded agent runtime)
+### R2.2 — AgentRunner (generic bounded agent runtime) ✓ 1ec04a1
+- [x] R2-2 engine/agents/runner.py AgentRunner.run(system_prompt, user_prompt, tools, output_schema, model_role, budget) + budget.py/tools.py/schemas.py (1ec04a1, 2026-08-08)
+- [x] R2-2 tests: 43 tests (iteration-cap, wall-clock-cap, token-accounting, tool-dedup, bounded reads, sandbox, schema parsing, compaction) — 202 evaluator/pipeline/judge + 43 agent tests pass; judge verdict 791d8438 (tier2 4/4 PASS)
+- [x] R2-2 lint: fixed pre-existing E501 in engine/persist.py (3 sites, e9f50cf) — blocks whole-repo tier1 lint in judge runs
 Extract the good parts of `AgenticEvaluator` into `engine/agents/runner.py`:
 - `AgentRunner.run(system_prompt, user_prompt, tools, output_schema, model_role, budget)`.
 - Move: iteration caps, wall-clock caps, token accounting, tool-call weighting,
