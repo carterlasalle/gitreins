@@ -717,3 +717,12 @@
 {"from":"tests/test_mcp_server.py","to":"pkg:engine.job_store","rel":"imports","provenance":"ast_exact","confidence":1.0}
 {"from":"tests/test_mcp_server.py","to":"pkg:engine.job_store","rel":"imports","provenance":"ast_exact","confidence":1.0}
 {"from":"gitreins_mcp/server.py","to":"pkg:engine.job_store","rel":"imports","provenance":"ast_exact","confidence":1.0}
+{"from":"tests/test_router.py","to":"pkg:unittest.mock","rel":"imports","provenance":"ast_exact","confidence":1.0}
+{"from":"tests/test_router.py","to":"pkg:engine.llm","rel":"imports","provenance":"ast_exact","confidence":1.0}
+{"from":"tests/test_router.py","to":"pkg:engine.pipeline","rel":"imports","provenance":"ast_exact","confidence":1.0}
+{"from":"tests/test_router.py","to":"pkg:engine.router","rel":"imports","provenance":"ast_exact","confidence":1.0}
+{"from":"tests/test_evaluator.py","to":"pkg:pytest","rel":"imports","provenance":"ast_exact","confidence":1.0}
+{"from":"engine/evaluator.py","to":"pkg:glob","rel":"imports","provenance":"ast_exact","confidence":1.0}
+{"from":"engine/judge.py","to":"pkg:engine.router","rel":"imports","provenance":"ast_exact","confidence":1.0}
+{"from":"engine/router.py","to":"pkg:logging","rel":"imports","provenance":"ast_exact","confidence":1.0}
+{"from":"engine/router.py","to":"pkg:engine.llm","rel":"imports","provenance":"ast_exact","confidence":1.0}

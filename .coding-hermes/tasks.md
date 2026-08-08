@@ -17,13 +17,9 @@
 > Phases in dependency order. Read DESIGN_v2.md before each. Each phase: implement →
 > tests → `gitreins guard` → commit → push → `gitreins task complete`.
 
-### R2.1 — ModelRouter (per-role model routing)
-Replace `Pipeline._llm` (one client) with `ModelRouter.for_role(role)`.
-- New: `engine/router.py` (or `engine/agents/router.py`).
-- `review.models.<role>` config block (scout, runtime_reviewer, contract_reviewer,
-  security_reviewer, verifier, writer) with exact model IDs from DESIGN §3.
-- `LLMClient` stays generic (already handles OpenAI-compat + Anthropic + retries + tokens).
-- Tests: router resolves per-role; missing role falls back; config-driven.
+### R2.1 — ModelRouter (per-role model routing) ✅ b0420b9
+- [x] R2-1 engine/router.py ModelRouter.for_role(role) + review.models.<role> config + env fallback + Pipeline/Judge wiring (b0420b9, 2026-08-08)
+- [x] R2-1 tests: 11 tests (per-role, fallback, caching, pipeline integration) — 96 router/pipeline/judge + 117 evaluator tests pass
 
 ### R2.2 — AgentRunner (generic bounded agent runtime)
 Extract the good parts of `AgenticEvaluator` into `engine/agents/runner.py`:
