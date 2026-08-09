@@ -5,47 +5,15 @@ import os
 import subprocess
 from dataclasses import dataclass
 
+from engine.env_sanitize import sanitized_env as _sanitized_env
+
+# NOTE: _sanitized_env is the shared env sanitizer (engine/env_sanitize.py) —
+# GIT_* (pre-commit hook leaks, DF-008), GITREINS_MAX_* (judge budget caps,
+# R2-16), GITREINS_LLM_* and the provider fallback *_API_KEYs (LLM credential
+# leaks, INFRA-LLM-ENV-001) are stripped from every subprocess env. Kept under
+# the historical name because guards tests import it from engine.guards.
+
 logger = logging.getLogger("gitreins.guards.go")
-
-
-def _sanitized_env() -> dict[str, str]:
-    """Return the current environment with every GIT_* variable removed.
-
-    Git exports GIT_INDEX_FILE (plus GIT_DIR, GIT_WORK_TREE, and friends) to
-    pre-commit hooks. Leaking them into `go test` subprocesses breaks tests
-    that exec git in temp repos or worktrees — the relative GIT_INDEX_FILE
-    resolves against the wrong directory and `git worktree add` fails with
-    `fatal: .git/index: index file open failed: Not a directory`. Same
-    class as DF-008 (guard_manager.py, c24f29e) — the Go guards missed it.
-    Also strip GITREINS_MAX_* budget controls: when a judge run exports caps
-    (GITREINS_MAX_ITERATIONS/INPUT/OUTPUT/MAX_TIME), they leak into the
-    pytest subprocess and break EvalCap/config-priority tests that exercise
-    env-override paths (proven 2026-08-09 R2-16: tier1 tests FAIL exit 2 with
-    GITREINS_MAX_OUTPUT_TOKENS set; 61 passed with it stripped).
-
-    Also strip LLM credential vars — GITREINS_LLM_* plus the provider
-    fallback keys (OPENROUTER/OPENAI/ANTHROPIC/DEEPSEEK/NEURALWATT). A judge
-    run exports them for its own LLMClient calls, and leaking them into test
-    subprocesses breaks env-priority tests in tests/test_llm.py that assert
-    api_key == '' when no keys are set (proven 2026-08-09 INFRA-LLM-ENV-001:
-    OPENROUTER_API_KEY inherited → tier1 1 failed, 58 passed with it
-    stripped).
-    """
-    return {
-        k: v
-        for k, v in os.environ.items()
-        if not k.startswith("GIT_")
-        and not k.startswith("GITREINS_MAX_")
-        and not k.startswith("GITREINS_LLM_")
-        and k
-        not in {
-            "OPENROUTER_API_KEY",
-            "OPENAI_API_KEY",
-            "ANTHROPIC_API_KEY",
-            "DEEPSEEK_API_KEY",
-            "NEURALWATT_API_KEY",
-        }
-    }
 
 
 @dataclass

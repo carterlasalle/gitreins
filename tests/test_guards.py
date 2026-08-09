@@ -221,7 +221,10 @@ def test_sanitized_env_strips_budget_and_llm_cred_vars():
     subprocesses. OPENROUTER_API_KEY (last in LLMClient's fallback chain) is
     inherited by the tier1 pytest subprocess and breaks tests/test_llm.py
     env-priority tests (assert api_key == '' but got the real key) — 1
-    failed with the creds set, 58 passed with them stripped.
+    failed with the creds set, 58 passed with them stripped. The block list
+    covers the FULL fallback chain in engine/llm.py (NEURALWATT → OPENAI →
+    ANTHROPIC → DEEPSEEK → KIMI → GROQ → OPENROUTER), so the leak class
+    cannot resurface via a key the list missed.
     """
     with patch.dict(
         os.environ,
@@ -230,11 +233,13 @@ def test_sanitized_env_strips_budget_and_llm_cred_vars():
             "GITREINS_MAX_OUTPUT_TOKENS": "2M",
             "GITREINS_MAX_INPUT_TOKENS": "10M",
             "GITREINS_MAX_TIME": "60m",
-            "GITREINS_LLM_API_KEY": "sk-or-v1-primary",
-            "OPENROUTER_API_KEY": "sk-or-v1-test",
+            "GITREINS_LLM_API_KEY": "primary-key",
+            "OPENROUTER_API_KEY": "router-key",
             "OPENAI_API_KEY": "sk-openai",
             "ANTHROPIC_API_KEY": "sk-ant-test",
             "DEEPSEEK_API_KEY": "sk-deepseek",
+            "KIMI_API_KEY": "sk-kimi",
+            "GROQ_API_KEY": "sk-groq",
             "NEURALWATT_API_KEY": "nw-test",
             "PATH": "/usr/bin",
         },
@@ -250,6 +255,8 @@ def test_sanitized_env_strips_budget_and_llm_cred_vars():
     assert "OPENAI_API_KEY" not in env
     assert "ANTHROPIC_API_KEY" not in env
     assert "DEEPSEEK_API_KEY" not in env
+    assert "KIMI_API_KEY" not in env
+    assert "GROQ_API_KEY" not in env
     assert "NEURALWATT_API_KEY" not in env
     assert env["PATH"] == "/usr/bin"
 

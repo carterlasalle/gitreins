@@ -38,6 +38,7 @@ from dataclasses import dataclass, field
 from typing import Any, Callable
 
 from engine.llm import LLMClient, ToolCall
+from engine.env_sanitize import sanitized_env
 from engine.eval_cap import EvalCap, parse_eval_cap, eval_cap_from_config, _fmt_tokens
 from engine.agents.budget import Budget
 from engine.agents.runner import AgentRunError, AgentRunner, BudgetExceededError, RoleRouter
@@ -1408,27 +1409,11 @@ Output ONLY the JSON verdict when done — no markdown fences, no extra text."""
         if not cmd:
             return {"error": "No command provided"}
         try:
-            # Strip GIT_* and GITREINS_MAX_* budget controls so evaluator
-            # caps never leak into the pytest subprocess (breaks EvalCap /
-            # config-priority tests; proven 2026-08-09 R2-16). Also strip LLM
-            # credential vars (GITREINS_LLM_* + provider fallback keys) —
-            # they break tests/test_llm.py env-priority tests that assert
-            # api_key == '' with no keys set (INFRA-LLM-ENV-001).
-            sanitized_env = {
-                k: v
-                for k, v in os.environ.items()
-                if not k.startswith("GIT_")
-                and not k.startswith("GITREINS_MAX_")
-                and not k.startswith("GITREINS_LLM_")
-                and k
-                not in {
-                    "OPENROUTER_API_KEY",
-                    "OPENAI_API_KEY",
-                    "ANTHROPIC_API_KEY",
-                    "DEEPSEEK_API_KEY",
-                    "NEURALWATT_API_KEY",
-                }
-            }
+            # Spawn with the shared sanitized env: GIT_*, GITREINS_MAX_*
+            # budget controls and LLM credential vars (GITREINS_LLM_* +
+            # provider fallback keys, INFRA-LLM-ENV-001) must never reach the
+            # pytest subprocess — they break EvalCap/config-priority and
+            # tests/test_llm.py env-priority tests.
             result = subprocess.run(
                 cmd,
                 shell=True,
@@ -1436,7 +1421,7 @@ Output ONLY the JSON verdict when done — no markdown fences, no extra text."""
                 text=True,
                 timeout=self.command_timeout,
                 cwd=self.workdir,
-                env=sanitized_env,
+                env=sanitized_env(),
             )
             output = result.stdout + result.stderr
             if len(output) > 4000:

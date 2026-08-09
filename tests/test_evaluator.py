@@ -183,7 +183,9 @@ class TestRunCommand:
         monkeypatch.setenv("GITREINS_MAX_OUTPUT_TOKENS", "2M")
         monkeypatch.setenv("GITREINS_MAX_ITERATIONS", "400")
         monkeypatch.setenv("GITREINS_LLM_API_KEY", "sk-keep")
-        monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-v1-test")
+        monkeypatch.setenv("OPENROUTER_API_KEY", "router-key")
+        monkeypatch.setenv("KIMI_API_KEY", "kimi-key")
+        monkeypatch.setenv("GROQ_API_KEY", "groq-key")
         with _patch("engine.evaluator.subprocess.run", side_effect=fake_run):
             result = evaluator._tool_run_command("pytest")
         assert result["exit_code"] == 0
@@ -191,6 +193,8 @@ class TestRunCommand:
         assert "GITREINS_MAX_ITERATIONS" not in captured["env"]
         assert "GITREINS_LLM_API_KEY" not in captured["env"]
         assert "OPENROUTER_API_KEY" not in captured["env"]
+        assert "KIMI_API_KEY" not in captured["env"]
+        assert "GROQ_API_KEY" not in captured["env"]
 
 
 class TestSearchPattern:

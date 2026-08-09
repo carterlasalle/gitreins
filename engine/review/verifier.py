@@ -41,6 +41,7 @@ from engine.agents import AgentRunner, Budget
 from engine.agents.runner import RoleRouter
 from engine.agents.schemas import schema_to_prompt
 from engine.agents.tools import Tool, codeintel_tools, make_read_file_tool
+from engine.env_sanitize import sanitized_env
 from engine.github.sandbox import Sandbox, SandboxError, SandboxTimeoutError
 
 __all__ = [
@@ -334,28 +335,11 @@ def _make_run_command_tool(
                 result = sandbox.run(cmd, cwd=sandbox.cwd, timeout=timeout)
                 exit_code, output = result.exit_code, result.stdout + result.stderr
             else:
-                # Strip GIT_* and GITREINS_MAX_* budget controls — evaluator
-                # caps must never leak into pytest subprocesses (breaks
-                # EvalCap/config-priority tests; proven 2026-08-09 R2-16).
-                # Also strip LLM credential vars (GITREINS_LLM_* + provider
-                # fallback keys) — they break tests/test_llm.py env-priority
-                # tests that assert api_key == '' with no keys set
-                # (INFRA-LLM-ENV-001).
-                sanitized_env = {
-                    k: v
-                    for k, v in os.environ.items()
-                    if not k.startswith("GIT_")
-                    and not k.startswith("GITREINS_MAX_")
-                    and not k.startswith("GITREINS_LLM_")
-                    and k
-                    not in {
-                        "OPENROUTER_API_KEY",
-                        "OPENAI_API_KEY",
-                        "ANTHROPIC_API_KEY",
-                        "DEEPSEEK_API_KEY",
-                        "NEURALWATT_API_KEY",
-                    }
-                }
+                # Spawn with the shared sanitized env: GIT_*, GITREINS_MAX_*
+                # budget controls and LLM credential vars (GITREINS_LLM_* +
+                # provider fallback keys, INFRA-LLM-ENV-001) must never reach
+                # pytest subprocesses — they break EvalCap/config-priority
+                # and tests/test_llm.py env-priority tests.
                 proc = subprocess.run(
                     cmd,
                     shell=True,
@@ -363,7 +347,7 @@ def _make_run_command_tool(
                     text=True,
                     timeout=timeout,
                     cwd=workdir,
-                    env=sanitized_env,
+                    env=sanitized_env(),
                 )
                 exit_code, output = proc.returncode, proc.stdout + proc.stderr
         except subprocess.TimeoutExpired:

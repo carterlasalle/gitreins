@@ -52,6 +52,8 @@ from dataclasses import dataclass, field
 
 import yaml
 
+from engine.env_sanitize import sanitized_env
+
 logger = logging.getLogger("gitreins.pipeline")
 
 
@@ -346,32 +348,12 @@ class Pipeline:
 
         logger.debug("Running script: %s", cmd)
         try:
-            # Strip GIT_* env vars (GIT_INDEX_FILE etc.) leaked by the
-            # pre-commit hook — they poison nested git commands in tests
-            # (same class as DF-008; guards.py got this in 3cad082). Also
-            # strip GITREINS_MAX_* budget controls — they leak into the
-            # pytest subprocess and break EvalCap/config-priority tests when
-            # a judge run exports caps (proven 2026-08-09 R2-16). Also strip
-            # LLM credential vars (GITREINS_LLM_* + provider fallback keys):
-            # leaking them into the pytest subprocess breaks tests/test_llm.py
-            # env-priority tests that assert api_key == '' with no keys set
-            # (proven 2026-08-09 INFRA-LLM-ENV-001: tier1 1 failed, 58 passed
-            # with them stripped).
-            sanitized_env = {
-                k: v
-                for k, v in os.environ.items()
-                if not k.startswith("GIT_")
-                and not k.startswith("GITREINS_MAX_")
-                and not k.startswith("GITREINS_LLM_")
-                and k
-                not in {
-                    "OPENROUTER_API_KEY",
-                    "OPENAI_API_KEY",
-                    "ANTHROPIC_API_KEY",
-                    "DEEPSEEK_API_KEY",
-                    "NEURALWATT_API_KEY",
-                }
-            }
+            # Spawn with the shared sanitized env: GIT_* (pre-commit hook
+            # leaks, DF-008), GITREINS_MAX_* (judge budget caps, R2-16) and
+            # LLM credential vars (GITREINS_LLM_* + provider fallback keys,
+            # INFRA-LLM-ENV-001) must never reach the pytest subprocess —
+            # they break EvalCap/config-priority and tests/test_llm.py
+            # env-priority tests.
             result = subprocess.run(
                 cmd,
                 shell=True,
@@ -379,7 +361,7 @@ class Pipeline:
                 text=True,
                 timeout=step_def.get("timeout", 120),
                 cwd=self.workdir,
-                env=sanitized_env,
+                env=sanitized_env(),
             )
             output = (result.stdout + result.stderr)[:2000]
             # A non-zero exit is a hard failure regardless of on_fail. on_fail

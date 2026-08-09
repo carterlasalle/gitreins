@@ -846,6 +846,51 @@ class TestSanitizedEnv:
         assert env["PATH"] == "/usr/bin:/bin"
         assert env["HOME"] == "/home/tester"
 
+    def test_sanitized_env_strips_llm_cred_vars(self, monkeypatch):
+        """INFRA-LLM-ENV-001: guard subprocesses must not inherit LLM creds.
+
+        The guard spawns pytest/linters/gitleaks/nested guards; a judge run
+        exports GITREINS_LLM_* + provider fallback keys for its own LLMClient
+        calls, and leaking them into the guard's pytest subprocess breaks
+        tests/test_llm.py env-priority tests (api_key == '' asserted, real
+        key found). Same block list as the other spawn sites — shared via
+        engine.env_sanitize so it can never drift.
+        """
+        from engine.guard_manager import _sanitized_env
+
+        monkeypatch.setenv("GITREINS_LLM_API_KEY", "primary-key")
+        monkeypatch.setenv("GITREINS_LLM_BASE_URL", "https://llm.test/v1")
+        monkeypatch.setenv("GITREINS_LLM_MODEL", "deepseek-v4-flash")
+        monkeypatch.setenv("GITREINS_MAX_ITERATIONS", "400")
+        for k in (
+            "NEURALWATT_API_KEY",
+            "OPENAI_API_KEY",
+            "ANTHROPIC_API_KEY",
+            "DEEPSEEK_API_KEY",
+            "KIMI_API_KEY",
+            "GROQ_API_KEY",
+            "OPENROUTER_API_KEY",
+        ):
+            monkeypatch.setenv(k, "leaked-key")
+        monkeypatch.setenv("PATH", "/usr/bin:/bin")
+
+        env = _sanitized_env()
+        assert "GITREINS_LLM_API_KEY" not in env
+        assert "GITREINS_LLM_BASE_URL" not in env
+        assert "GITREINS_LLM_MODEL" not in env
+        assert "GITREINS_MAX_ITERATIONS" not in env
+        for k in (
+            "NEURALWATT_API_KEY",
+            "OPENAI_API_KEY",
+            "ANTHROPIC_API_KEY",
+            "DEEPSEEK_API_KEY",
+            "KIMI_API_KEY",
+            "GROQ_API_KEY",
+            "OPENROUTER_API_KEY",
+        ):
+            assert k not in env
+        assert env["PATH"] == "/usr/bin:/bin"
+
     def test_get_staged_files_ignores_leaked_git_index_file(
         self, tmp_workdir, tmp_path, monkeypatch
     ):

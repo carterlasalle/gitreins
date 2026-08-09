@@ -24,6 +24,7 @@ import os
 import re
 import subprocess
 import time
+from engine.env_sanitize import sanitized_env
 from engine.guards import check_go_lint, check_go_tests, check_go_build
 from engine.lsp import run_lsp_check
 from engine.types import GuardResult, Tier1Result
@@ -32,15 +33,16 @@ logger = logging.getLogger("gitreins.guard")
 
 
 def _sanitized_env() -> dict[str, str]:
-    """Return the current environment with every GIT_* variable removed.
+    """Return the current environment with every hostile variable removed.
 
-    Git exports GIT_INDEX_FILE (plus GIT_DIR, GIT_WORK_TREE, and friends) to
-    pre-commit hooks. Leaking them into subprocesses the guard spawns —
-    pytest, linters, nested guards — makes those processes read the OUTER
-    repository's index instead of the workdir's own, which breaks
-    nested-guard tests and diff-mode test selection. (DF-008)
+    Shared block list from engine/env_sanitize.py — GIT_* (pre-commit hook
+    leaks, DF-008), GITREINS_MAX_* (judge budget caps, R2-16), GITREINS_LLM_*
+    and the provider fallback *_API_KEYs (LLM credential leaks,
+    INFRA-LLM-ENV-001). The guard spawns pytest, linters, gitleaks and
+    nested guards — none of them may inherit the judge's LLM credentials or
+    the OUTER repository's git state.
     """
-    return {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
+    return sanitized_env()
 
 
 # ── Diff-based test discovery ──────────────────────────────────
