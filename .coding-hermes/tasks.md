@@ -131,11 +131,11 @@ Extract the good parts of `AgenticEvaluator` into `engine/agents/runner.py`:
 - [x] R2-12 feed task criteria into Lane A (requirements) alongside Lane B: pipeline `_run_review_agent` builds intent block from task criteria (explicit `task.intent_context` wins), ReviewAgent.run(intent_context=...) renders it BEFORE the evidence store; ReviewOrchestrator.run/run_from_plan/_run_one thread it to every reviewer (43af82e)
 - [x] R2-12 tests: task-consume + intent/defect context merge — 23 new tests (7 task_manager consume/read-only, 8 reviewer prompt-merge, 4 orchestrator threading, 4 pipeline); targeted 120 passed, ruff clean, LSP 0 findings; judge verdict 661e954c: tier1 lint/tests/secrets ALL PASS, tier2 COMPLETE 3/3. R2.13 ready.
 
-### R2.13 — Rich review history + provenance + ReviewLearning
-- [ ] R2-13 review_runs/<sha>/ artifacts (manifest, change, static-evidence, scout, candidates, verification, final-findings, requirements, usage)
-- [ ] R2-13 final findings carry generated_by + verified_by provenance
-- [ ] R2-13 ReviewLearning — developer accept/reject → durable rule scoped by repo+paths
-- [ ] R2-13 tests: provenance + ReviewLearning retrieval
+### R2.13 — Rich review history + provenance + ReviewLearning ✅ ecc6752 (judge PASS 781eef2c)
+- [x] R2-13 engine/review/history.py — ReviewRunArchiver persists review_runs/<sha>/ JSON artifacts: manifest, change, static-evidence, scout, candidates, verification, final-findings, requirements, usage (exact §13 filenames); wired into ReviewOrchestrator (archiver= param, base_dir=workdir, archives stages when data exists); never raises on archive failure (ecc6752, 2026-08-08)
+- [x] R2-13 final findings carry provenance — ReviewFinding.generated_by {role, model} + verified_by {model, verdict} (defaulted, backward compatible; §13 shape) (ecc6752)
+- [x] R2-13 engine/review/learning.py — ReviewLearning: developer accept/reject → durable rule {scope: {repo, paths}, rule, source: {type, finding}, confidence, support_count}, JSONL-persisted (.gitreins/review_learning.jsonl), repo+fnmatch path-glob retrieval, thread-safe append, I/O failure never raises (ecc6752)
+- [x] R2-13 tests: 24 hermetic (9 test_review_history: 9 artifacts, clean re-run, failure-never-raises, provenance in final-findings, orchestrator wiring; 15 test_review_learning: accept/reject rules, repo+path scoping, §13 round-trip, support_count, persistence, corrupt-line skip) — StubLLM/zero LLM; full suite 1722 passed/7 skipped/3 deselected (rust-analyzer hang pre-existing at parent); ruff clean; guard PASS; judge verdict 781eef2c: tier1 lint/tests/secrets ALL PASS, tier2 COMPLETE 4/4. R2.14 ready.
 
 ### R2.14 — propagate → propagate_policy + cross-repo impact
 - [ ] R2-14 rename conceptual purpose of propagate to propagate_policy
