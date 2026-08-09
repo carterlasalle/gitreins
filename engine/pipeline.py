@@ -58,7 +58,9 @@ logger = logging.getLogger("gitreins.pipeline")
 @dataclass
 class StepResult:
     id: str
-    type: str  # "script" | "ai_eval" | "output" | "review_agent" | "commit_audit"
+    type: str  # script | ai_eval | output | review_agent | agent | commit_audit
+    #        | change_analysis | analyzer | evidence_retrieval | merge_findings
+    #        | verify_findings | rank_findings | criteria_eval | publish_review
     passed: bool = True
     output: str = ""
     error: str = ""
@@ -100,6 +102,9 @@ class Pipeline:
         self.workdir = os.path.abspath(workdir)
         self.config = config
         self.stages: list[dict] = config.get("pipeline", {}).get("stages", [])
+        # DESIGN_v2.md §17 review DAG — a flat list of stage dicts (parallel
+        # groups use ``parallel: true`` + ``steps``), executed by run_review().
+        self.review_stages: list[dict] = config.get("review_pipeline") or []
         self._stage_results: dict[str, StageResult] = {}
         self._llm = llm  # Can be injected by Judge
         self._router = router  # ModelRouter — resolves a client per role (R2.1)
@@ -132,6 +137,43 @@ class Pipeline:
 
             stage_id = stage_def.get("id", f"stage_{len(self._stage_results)}")
             logger.info("Running stage: %s", stage_id)
+
+            if stage_def.get("parallel"):
+                result = self._run_parallel_stage(stage_id, stage_def, task)
+            else:
+                result = self._run_sequential_stage(stage_id, stage_def, task)
+
+            self._stage_results[stage_id] = result
+
+        return self._compile_results()
+
+    def run_review(self, task: dict) -> dict:
+        """Run the DESIGN_v2.md §17 review DAG stages (R2.16).
+
+        Stages come from the config ``review_pipeline`` key: a flat list of
+        stage dicts where parallel groups use ``parallel: true`` + ``steps``
+        and every §17 stage type is dispatched (change_analysis, parallel
+        analyzer steps, agent roles scout/reviewers/verifier,
+        evidence_retrieval, merge_findings, verify_findings, rank_findings,
+        criteria_eval, publish_review). Conditions (e.g. ``task.has_criteria``
+        gating the criteria_eval stage) are honored exactly like the eval
+        pipeline; the trigger filter does not apply.
+
+        Findings are plumbed through ``task["findings"]`` (one dict per
+        finding) so later stages and the caller consume the same list; Lane A
+        verdicts land on ``task["criteria_verdicts"]``.
+        """
+        self._stage_results = {}
+
+        for stage_def in self.review_stages:
+            if not self._check_condition(stage_def.get("condition"), task):
+                logger.debug(
+                    "Skipping review stage %s (condition not met)", stage_def.get("id")
+                )
+                continue
+
+            stage_id = stage_def.get("id", f"stage_{len(self._stage_results)}")
+            logger.info("Running review stage: %s", stage_id)
 
             if stage_def.get("parallel"):
                 result = self._run_parallel_stage(stage_id, stage_def, task)
@@ -204,6 +246,17 @@ class Pipeline:
         steps = stage_def.get("steps", [])
         result = StageResult(id=stage_id)
 
+        if not steps and stage_def.get("type"):
+            # ``parallel: true`` with no step list — the stage type itself
+            # parallelizes internally (verify_findings fans out over candidate
+            # findings). Run it as a single typed step (§17).
+            step_result = self._run_step(stage_def, task)
+            result.steps.append(step_result)
+            result.any_failed = not step_result.passed
+            result.passed = step_result.passed
+            result.summary = step_result.output or step_result.error
+            return result
+
         with concurrent.futures.ThreadPoolExecutor(max_workers=len(steps)) as executor:
             futures = {executor.submit(self._run_step, step, task): step for step in steps}
             for future in concurrent.futures.as_completed(futures):
@@ -234,17 +287,8 @@ class Pipeline:
             result.summary = self._summarize_stage(result)
             return result
 
-        if stage_def.get("type") == "ai_eval":
-            step_result = self._run_ai_eval(stage_def, task)
-        elif stage_def.get("type") == "commit_audit":
-            step_result = self._run_commit_audit(stage_def, task)
-        elif stage_def.get("type") == "review_agent":
-            step_result = self._run_review_agent(stage_def, task)
-        elif stage_def.get("type") == "output":
-            step_result = self._run_output(stage_def, task)
-        else:
-            # Treat as a single script step
-            step_result = self._run_script_step(stage_def, task)
+        # Single typed stage (script, ai_eval, review DAG types, ...)
+        step_result = self._dispatch(stage_def, task)
 
         result.steps.append(step_result)
         result.passed = step_result.passed
@@ -254,23 +298,40 @@ class Pipeline:
 
     def _run_step(self, step_def: dict, task: dict) -> StepResult:
         """Run a single step (used by parallel stages)."""
-        step_type = step_def.get("type", "script")
-        step_id = step_def.get("id", "unnamed")
+        return self._dispatch(step_def, task)
 
-        if step_type == "script":
-            return self._run_script_step(step_def, task)
-        elif step_type == "ai_eval":
-            return self._run_ai_eval(step_def, task)
-        elif step_type == "commit_audit":
-            return self._run_commit_audit(step_def, task)
-        elif step_type == "review_agent":
-            return self._run_review_agent(step_def, task)
-        elif step_type == "output":
-            return self._run_output(step_def, task)
-        else:
+    #: step ``type`` → dispatch method name (R2.16: full §17 review DAG).
+    _STAGE_DISPATCHERS: dict[str, str] = {
+        "script": "_run_script_step",
+        "ai_eval": "_run_ai_eval",
+        "commit_audit": "_run_commit_audit",
+        # §17 uses ``type: agent``; ``review_agent`` stays for backward compat.
+        "review_agent": "_run_review_agent",
+        "agent": "_run_review_agent",
+        "output": "_run_output",
+        # ── DESIGN_v2.md §17 review_pipeline stage types (R2.16) ──
+        "change_analysis": "_run_change_analysis",
+        "analyzer": "_run_analyzer",
+        "evidence_retrieval": "_run_evidence_retrieval",
+        "merge_findings": "_run_merge_findings",
+        "verify_findings": "_run_verify_findings",
+        "rank_findings": "_run_rank_findings",
+        "criteria_eval": "_run_criteria_eval",
+        "publish_review": "_run_publish_review",
+    }
+
+    def _dispatch(self, step_def: dict, task: dict) -> StepResult:
+        """Route one step def to its runner by ``type``; unknown → error step."""
+        step_type = step_def.get("type", "script")
+        method_name = self._STAGE_DISPATCHERS.get(step_type)
+        if method_name is None:
             return StepResult(
-                id=step_id, type=step_type, passed=False, error=f"Unknown step type: {step_type}"
+                id=step_def.get("id", "unnamed"),
+                type=step_type,
+                passed=False,
+                error=f"Unknown step type: {step_type}",
             )
+        return getattr(self, method_name)(step_def, task)
 
     def _run_script_step(self, step_def: dict, task: dict) -> StepResult:
         """Execute a shell command."""
@@ -588,10 +649,15 @@ class Pipeline:
         if not role:
             return StepResult(
                 id=step_id,
-                type="review_agent",
+                type=step_def.get("type", "review_agent"),
                 passed=False,
                 error="review_agent step requires a 'role' (runtime, contracts, security_edges)",
             )
+
+        # §17 ``scout`` role — the cheap retrieval-plan classifier (R2.6).
+        # Runs BEFORE the reviewers and feeds the evidence_retrieval stage.
+        if role in ("scout", "scout_agent"):
+            return self._run_scout(step_def, task)
 
         from engine.agents import Budget
         from engine.review import ROLE_TO_REVIEWER
@@ -600,7 +666,7 @@ class Pipeline:
         if reviewer_cls is None:
             return StepResult(
                 id=step_id,
-                type="review_agent",
+                type=step_def.get("type", "review_agent"),
                 passed=False,
                 error=(
                     f"Unknown review_agent role: {role!r} "
@@ -709,6 +775,574 @@ class Pipeline:
                         continue
             return rebuilt
         return None
+
+    # ── R2.16: DESIGN_v2.md §17 review_pipeline stage types ────────────────
+
+    def _ensure_store(self, task: dict):
+        """Return the task's EvidenceStore, creating + attaching one when absent."""
+        from engine.evidence import EvidenceStore
+
+        store = task.get("evidence_store")
+        if not isinstance(store, EvidenceStore):
+            store = self._task_evidence_store(task) or EvidenceStore()
+            task["evidence_store"] = store
+        return store
+
+    def _append_evidence(self, task: dict, evidence_items: list) -> list[str]:
+        """Append Evidence items to the task's store; return their ids.
+
+        Keeps the ``task[\"evidence\"]`` dict-list view in sync so consumers
+        that read the list (rather than the store instance) see the additions.
+        """
+        store = self._ensure_store(task)
+        ids: list[str] = []
+        for ev in evidence_items:
+            ids.append(store.append(ev).id)
+        task["evidence"] = [e.to_dict() for e in store.all()]
+        return ids
+
+    def _run_change_analysis(self, step_def: dict, task: dict) -> StepResult:
+        """§17 ``change_analysis`` — resolve the change being reviewed.
+
+        When the task carries a ChangeSource instance (``task[\"change_source\"]``
+        — engine/github/checkout.py), its diff/changed_files/base_sha/head_sha
+        populate the task. Explicit task fields win over the source so callers
+        can pre-seed context. Fills ``task[\"changed_files\"]``,
+        ``task[\"diff\"]`` and ``task[\"diff_context\"]`` for later stages.
+        """
+        step_id = step_def.get("id", "change_analysis")
+        source = task.get("change_source")
+        changed_files = list(task.get("changed_files") or [])
+        diff_text = task.get("diff") or task.get("diff_context") or ""
+        base_sha = task.get("base_sha", "")
+        head_sha = task.get("head_sha", "")
+
+        if source is not None:
+            try:
+                diff = source.diff()
+                if diff_text is None or not diff_text.strip():
+                    diff_text = diff.text or ""
+                if not changed_files:
+                    changed_files = list(diff.files or [])
+                base_sha = source.base_sha() or base_sha
+                head_sha = source.head_sha() or head_sha
+            except Exception as exc:  # noqa: BLE001 — change-source boundary
+                return StepResult(
+                    id=step_id,
+                    type="change_analysis",
+                    passed=False,
+                    error=f"change source failed: {exc}",
+                )
+
+        task["changed_files"] = changed_files
+        task["diff"] = diff_text
+        task.setdefault("diff_context", diff_text)
+        task["base_sha"] = base_sha
+        task["head_sha"] = head_sha
+
+        if not changed_files:
+            return StepResult(
+                id=step_id,
+                type="change_analysis",
+                passed=True,
+                output="No changed files detected — clean tree.",
+                data={"files": [], "base_sha": base_sha, "head_sha": head_sha},
+            )
+        output = f"{len(changed_files)} file(s) changed; diff {len(diff_text)} chars"
+        return StepResult(
+            id=step_id,
+            type="change_analysis",
+            passed=True,
+            output=output,
+            data={"files": changed_files, "base_sha": base_sha, "head_sha": head_sha},
+        )
+
+    def _run_analyzer(self, step_def: dict, task: dict) -> StepResult:
+        """§17 parallel ``analyzer`` step — static evidence producers.
+
+        ``analyzer`` names: lsp | semgrep | typecheck | secrets | dependencies.
+        Each producer degrades to [] when its binary is missing (the engines
+        already do this); produced Evidence is appended to the task's store so
+        reviewers and the verifier can cite it. A producer failure is captured
+        as an error step — parallel lanes keep running.
+        """
+        step_id = step_def.get("id", "analyzer")
+        name = step_def.get("analyzer")
+        if not name:
+            return StepResult(
+                id=step_id,
+                type="analyzer",
+                passed=False,
+                error=(
+                    "analyzer step requires an 'analyzer' name "
+                    "(lsp, semgrep, typecheck, secrets, dependencies)"
+                ),
+            )
+        try:
+            evidence_items = self._run_analyzer_producer(name, task)
+            ids = self._append_evidence(task, evidence_items)
+        except Exception as exc:  # noqa: BLE001 — analyzer boundary: report, don't crash
+            logger.exception("analyzer step %s (%s) failed", step_id, name)
+            return StepResult(id=step_id, type="analyzer", passed=False, error=str(exc))
+        output = f"{name}: {len(evidence_items)} finding(s)"
+        return StepResult(
+            id=step_id,
+            type="analyzer",
+            passed=True,
+            output=output,
+            data={"analyzer": name, "count": len(evidence_items), "evidence_ids": ids},
+        )
+
+    def _run_analyzer_producer(self, name: str, task: dict) -> list:
+        """Run one §17 analyzer producer; returns Evidence objects.
+
+        All external tools skip gracefully when not installed (logged note,
+        no evidence). ``lsp`` runs the configured LSP tools over the changed
+        files; ``typecheck`` runs the configured static-analysis tools.
+        """
+        from engine.evidence import Evidence
+
+        workdir = self.workdir
+        if name == "semgrep":
+            from engine.analyzers.semgrep import run_semgrep
+
+            return run_semgrep(workdir)
+        if name == "secrets":
+            from engine.analyzers.gitleaks import run_gitleaks
+
+            return run_gitleaks(workdir)
+        if name == "dependencies":
+            from engine.analyzers.trivy import run_trivy
+
+            return run_trivy(workdir)
+        if name == "lsp":
+            from engine.lsp import run_lsp_check
+
+            guards = self.config.get("guards", {})
+            tools = list(guards.get("lsp_tools") or ["pylsp"])
+            changed = task.get("changed_files")
+            result: list[Evidence] = []
+            for tool in tools:
+                diags = run_lsp_check(tool, workdir, files=changed)
+                result.extend(self._lsp_diags_to_evidence(diags, tool))
+            return result
+        if name == "typecheck":
+            from engine.evidence.producers import static_findings_to_evidence
+            from engine.static_analysis import run_static_check
+
+            guards = self.config.get("guards", {})
+            lang_tools = guards.get("static_analysis_tools") or {}
+            tools = list(lang_tools.get("python") or ["mypy", "pyright"])
+            result = []
+            for tool in tools:
+                findings = run_static_check(tool, workdir)
+                result.extend(static_findings_to_evidence(findings, tool))
+            return result
+        raise ValueError(
+            f"unknown analyzer name: {name!r} "
+            "(expected lsp, semgrep, typecheck, secrets, dependencies)"
+        )
+
+    def _lsp_diags_to_evidence(self, diags: list[dict], tool: str) -> list:
+        """Wrap LSP diagnostic dicts ({file,line,severity,message,code,tool})
+        as kind='lsp' Evidence so the review store carries them like any other
+        static evidence."""
+        from engine.evidence import Evidence
+
+        result = []
+        for d in diags:
+            result.append(
+                Evidence(
+                    id="",
+                    kind="lsp",
+                    source=tool,
+                    file=d.get("file"),
+                    line_start=d.get("line"),
+                    line_end=d.get("line"),
+                    payload={
+                        "code": d.get("code", ""),
+                        "message": d.get("message", ""),
+                        "severity": d.get("severity", ""),
+                        "tool": tool,
+                    },
+                )
+            )
+        return result
+
+    def _run_scout(self, step_def: dict, task: dict) -> StepResult:
+        """§17 ``agent`` role ``scout`` — cheap retrieval-plan classifier (R2.6).
+
+        The ScoutAgent plans retrievals for the evidence_retrieval stage; the
+        plan is stashed on ``task[\"scout_plan\"]`` and its lenses on
+        ``task[\"review_lenses\"]`` so reviewers and later stages consume it.
+        """
+        step_id = step_def.get("id", "scout")
+        from engine.agents import Budget
+        from engine.review.scout import ScoutAgent
+
+        router = self._router
+        if router is None:
+            from engine.router import ModelRouter
+
+            router = ModelRouter(self.config)
+        try:
+            scout = ScoutAgent(router=router, workdir=self.workdir)
+            plan = scout.run(
+                list(task.get("changed_files") or []),
+                task.get("diff") or task.get("diff_context") or "",
+                budget=Budget.from_config(self.config),
+            )
+            task["scout_plan"] = plan
+            task["review_lenses"] = list(plan.review_lenses or [])
+            requests = [r.__dict__ for r in plan.retrieval_requests]
+            symbols = [s.__dict__ for s in plan.changed_symbols]
+            output = (
+                f"scout: {len(requests)} retrieval request(s), "
+                f"{len(task['review_lenses'])} lens(es)"
+            )
+            return StepResult(
+                id=step_id,
+                type="agent",
+                passed=True,
+                output=output,
+                data={
+                    "role": "scout",
+                    "changed_symbols": symbols,
+                    "retrieval_requests": requests,
+                    "review_lenses": task["review_lenses"],
+                },
+            )
+        except Exception as exc:  # noqa: BLE001 — agent boundary: report, don't crash
+            logger.exception("scout step %s failed", step_id)
+            return StepResult(id=step_id, type="agent", passed=False, error=str(exc))
+
+    def _run_evidence_retrieval(self, step_def: dict, task: dict) -> StepResult:
+        """§17 ``evidence_retrieval`` — execute the scout's retrieval plan.
+
+        Uses ``task[\"codeintel_provider\"]`` (an R2.5 CodeIntelProvider
+        instance) with the plan from the scout stage. Degrades to a no-op when
+        no provider or plan is available — the DAG never crashes on retrieval.
+        """
+        step_id = step_def.get("id", "evidence_retrieval")
+        plan = task.get("scout_plan")
+        provider = task.get("codeintel_provider")
+        if provider is None:
+            return StepResult(
+                id=step_id,
+                type="evidence_retrieval",
+                passed=True,
+                output="Evidence retrieval skipped — no code-intel provider configured.",
+                data={"retrieved": 0},
+            )
+        if plan is None:
+            return StepResult(
+                id=step_id,
+                type="evidence_retrieval",
+                passed=True,
+                output="Evidence retrieval skipped — no scout plan.",
+                data={"retrieved": 0},
+            )
+        from engine.review.context_builder import EvidencePlanner
+
+        store = self._ensure_store(task)
+        planner = EvidencePlanner(provider, store, default_limit=int(step_def.get("limit", 3)))
+        appended = planner.execute(plan)
+        task["evidence"] = [e.to_dict() for e in store.all()]
+        return StepResult(
+            id=step_id,
+            type="evidence_retrieval",
+            passed=True,
+            output=f"Retrieved {len(appended)} evidence item(s)",
+            data={"retrieved": len(appended), "ids": [e.id for e in appended]},
+        )
+
+    def _run_merge_findings(self, step_def: dict, task: dict) -> StepResult:
+        """§17 ``merge_findings`` — merge + dedup the reviewers' candidate list.
+
+        The three reviewers run in parallel (R2.7) and routinely surface the
+        same defect; deterministic dedup (engine/review/dedup.py) collapses
+        evidence-overlapping / same-region findings to one representative.
+        """
+        step_id = step_def.get("id", "merge_findings")
+        from engine.review.dedup import dedupe_findings
+
+        findings = list(task.get("findings") or [])
+        before = len(findings)
+        deduped = dedupe_findings(findings)
+        task["findings"] = list(deduped)
+        output = f"Merged {before} finding(s) → {len(deduped)} after dedup"
+        return StepResult(
+            id=step_id,
+            type="merge_findings",
+            passed=True,
+            output=output,
+            data={"input_count": before, "output_count": len(deduped)},
+        )
+
+    def _verify_one(self, router, finding_dict: dict, index: int):
+        """Run one VerifierAgent against one candidate finding dict (R2.8)."""
+        from engine.agents import Budget
+        from engine.review.verifier import VerifierAgent, VerifierCandidate
+
+        candidate = VerifierCandidate(
+            finding_id=str(finding_dict.get("finding_id") or f"F{index + 1}"),
+            file=str(finding_dict.get("file", "")),
+            claim=str(finding_dict.get("claim", "")),
+            line=finding_dict.get("line")
+            if isinstance(finding_dict.get("line"), int)
+            else None,
+            trigger=str(finding_dict.get("trigger", "")),
+            evidence=[str(r) for r in (finding_dict.get("evidence") or [])],
+            verification_plan=[
+                str(p) for p in (finding_dict.get("verification_plan") or [])
+            ],
+        )
+        agent = VerifierAgent(router=router, workdir=self.workdir)
+        verdicts = agent.run(candidate, budget=Budget.from_config(self.config))
+        return list(verdicts.findings) if verdicts is not None else []
+
+    def _run_verify_findings(self, step_def: dict, task: dict) -> StepResult:
+        """§17 ``verify_findings`` — adversarial verification of candidates.
+
+        One VerifierAgent per candidate finding (R2.8), fanned out across a
+        thread pool (the ``parallel: true`` marker on the §17 stage). Each
+        finding dict gains the verifier's structured factors (verdict,
+        verifier_confidence, execution_path_confirmed, impact, ...); REFUTED
+        findings are dropped from the list, CONFIRMED/UNVERIFIED stay for
+        ranking and the report. Per-candidate failures degrade to UNVERIFIED
+        — the DAG never crashes on a verifier error.
+        """
+        step_id = step_def.get("id", "verify_findings")
+        candidates = list(task.get("findings") or [])
+        if not candidates:
+            return StepResult(
+                id=step_id,
+                type="verify_findings",
+                passed=True,
+                output="No findings to verify.",
+                data={"candidates": 0, "confirmed": 0, "refuted": 0, "unverified": 0},
+            )
+        router = self._router
+        if router is None:
+            from engine.router import ModelRouter
+
+            router = ModelRouter(self.config)
+
+        verdicts_by_index: dict[int, list] = {}
+        errors: dict[int, str] = {}
+        max_workers = min(len(candidates), max(1, int(step_def.get("workers", 4))))
+        with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+            futures = {
+                executor.submit(self._verify_one, router, cand, i): i
+                for i, cand in enumerate(candidates)
+            }
+            for future in concurrent.futures.as_completed(futures):
+                idx = futures[future]
+                try:
+                    verdicts_by_index[idx] = future.result()
+                except Exception as exc:  # noqa: BLE001 — verifier boundary
+                    logger.warning("verifier for candidate %d failed: %s", idx, exc)
+                    errors[idx] = str(exc)
+
+        confirmed = refuted = unverified = 0
+        kept: list[dict] = []
+        for i, finding in enumerate(candidates):
+            verdicts = verdicts_by_index.get(i, [])
+            v = verdicts[0] if verdicts else None
+            if v is None:
+                unverified += 1
+                finding["verdict"] = "UNVERIFIED"
+                finding["verifier_confidence"] = 0.0
+                if i in errors:
+                    finding["verifier_error"] = errors[i]
+                kept.append(finding)
+                continue
+            d = v.to_dict() if hasattr(v, "to_dict") else dict(v)
+            finding["verdict"] = d.get("verdict", "UNVERIFIED")
+            finding["impact"] = d.get("impact", "")
+            finding["patch_causality"] = d.get("patch_causality", "")
+            finding["reproducible"] = bool(d.get("reproducible", False))
+            finding["execution_path_confirmed"] = bool(
+                d.get("execution_path_confirmed", False)
+            )
+            finding["verifier_confidence"] = d.get("verifier_confidence", 0.0)
+            finding["developer_relevance"] = d.get("developer_relevance", "medium")
+            finding["notes"] = d.get("notes", "")
+            finding["verified_by"] = {"role": "verifier", "verdict": d.get("verdict", "")}
+            if finding["verdict"] == "REFUTED":
+                refuted += 1
+                continue  # a refuted claim is not reported
+            if finding["verdict"] == "CONFIRMED":
+                confirmed += 1
+            else:
+                unverified += 1
+            kept.append(finding)
+
+        task["findings"] = kept
+        output = (
+            f"Verified {len(candidates)} candidate(s): {confirmed} confirmed, "
+            f"{refuted} refuted, {unverified} unverified"
+        )
+        return StepResult(
+            id=step_id,
+            type="verify_findings",
+            passed=True,
+            output=output,
+            data={
+                "candidates": len(candidates),
+                "confirmed": confirmed,
+                "refuted": refuted,
+                "unverified": unverified,
+                "errors": errors,
+            },
+        )
+
+    def _run_rank_findings(self, step_def: dict, task: dict) -> StepResult:
+        """§17 ``rank_findings`` — deterministic usefulness ranking (R2.9).
+
+        Sorts the verified findings most-useful-first by the LLM-free key in
+        engine/review/ranker.py (severity, verifier confidence, execution
+        path, developer relevance, then file/line/claim).
+        """
+        step_id = step_def.get("id", "rank_findings")
+        from engine.review.ranker import finding_to_dict, rank_findings
+
+        findings = list(task.get("findings") or [])
+        ranked = rank_findings(findings)
+        task["findings"] = list(ranked)
+        return StepResult(
+            id=step_id,
+            type="rank_findings",
+            passed=True,
+            output=f"Ranked {len(ranked)} finding(s)",
+            data={
+                "count": len(ranked),
+                "ranked": [finding_to_dict(f) for f in ranked],
+            },
+        )
+
+    def _run_criteria_eval(self, step_def: dict, task: dict) -> StepResult:
+        """§17 ``criteria_eval`` — Lane A: criteria evaluation (R2.3).
+
+        Runs the CriteriaEvaluator (engine/evaluator.py) over the task's
+        criteria when present (the §17 stage carries ``condition:
+        task.has_criteria``; this runner also guards for direct calls).
+        Verdicts land on ``task[\"criteria_verdicts\"]`` for the combined
+        report. A verdict is a review result, not a DAG failure: the step
+        passes once the evaluation ran (criteria FAILs are reported, not
+        crashes).
+        """
+        step_id = step_def.get("id", "criteria_eval")
+        criteria = task.get("criteria") or []
+        if not criteria:
+            return StepResult(
+                id=step_id,
+                type="criteria_eval",
+                passed=True,
+                output="No criteria — Lane A skipped.",
+                data={"items": []},
+            )
+
+        llm = self._llm
+        router = self._router
+        if router is not None:
+            llm = router.for_role("evaluator")
+        if llm is None:
+            from engine.llm import LLMClient
+
+            llm = LLMClient()
+            self._llm = llm
+
+        from engine.evaluator import CriteriaEvaluator
+
+        evaluator = CriteriaEvaluator(llm, self.workdir, router=router)
+        try:
+            verdict = evaluator.evaluate(task)
+        except Exception as exc:  # noqa: BLE001 — evaluation boundary
+            logger.exception("criteria_eval step %s failed", step_id)
+            return StepResult(id=step_id, type="criteria_eval", passed=False, error=str(exc))
+
+        items = [
+            {"criterion": i.criterion, "status": i.status, "detail": i.detail}
+            for i in verdict.items
+        ]
+        task["criteria_verdicts"] = items
+        output = "\n".join(
+            f"  {'✓' if i['status'] == 'PASS' else '✗'} {i['criterion']}: {i['detail']}"
+            for i in items
+        )
+        return StepResult(
+            id=step_id,
+            type="criteria_eval",
+            passed=True,
+            output=f"{verdict.verdict}\n{output}\n{verdict.summary}",
+            data={"verdict": verdict.verdict, "items": items, "summary": verdict.summary},
+        )
+
+    def _run_publish_review(self, step_def: dict, task: dict) -> StepResult:
+        """§17 ``publish_review`` — batched comments to GitHub, no-op locally.
+
+        With PR context on the task (``pr_number`` + ``owner``/``repo``) the
+        CommentWriter (R2.9) renders one batched CommentBatch from the ranked
+        findings and engine/github/publisher.py posts it — publishing never
+        raises. Without PR context the step is a local no-op that summarizes
+        the findings for the combined report.
+        """
+        step_id = step_def.get("id", "publish_review")
+        findings = list(task.get("findings") or [])
+        pr_number = task.get("pr_number")
+        if not pr_number:
+            return StepResult(
+                id=step_id,
+                type="publish_review",
+                passed=True,
+                output=(
+                    f"Local review — {len(findings)} finding(s); "
+                    "publish skipped (no PR context)."
+                ),
+                data={"mode": "local", "published": 0, "failed": 0},
+            )
+
+        router = self._router
+        if router is None:
+            from engine.router import ModelRouter
+
+            router = ModelRouter(self.config)
+        try:
+            from engine.github.publisher import publish_comments
+            from engine.review.writer import CommentWriter
+
+            writer = CommentWriter(router=router, workdir=self.workdir)
+            batch = writer.run(
+                findings,
+                changed_files=task.get("changed_files"),
+                diff_context=task.get("diff") or "",
+            )
+            owner = str(task.get("owner") or "")
+            repo = str(task.get("repo") or "")
+            result = publish_comments(owner, repo, int(pr_number), batch)
+            posted, failed = len(result.posted), len(result.failed)
+            output = (
+                f"Published {posted}/{len(batch.comments)} comment(s) to "
+                f"{owner}/{repo}#{pr_number}"
+                + (f"; {failed} failed" if failed else "")
+            )
+            return StepResult(
+                id=step_id,
+                type="publish_review",
+                passed=result.ok,
+                output=output,
+                data={
+                    "mode": "github",
+                    "comments": len(batch.comments),
+                    "published": posted,
+                    "failed": failed,
+                    "errors": result.errors,
+                },
+            )
+        except Exception as exc:  # noqa: BLE001 — publishing never breaks the DAG
+            logger.exception("publish_review step %s failed", step_id)
+            return StepResult(id=step_id, type="publish_review", passed=False, error=str(exc))
 
     def _run_output(self, step_def: dict, task: dict) -> StepResult:
         """Compile output from all stages."""

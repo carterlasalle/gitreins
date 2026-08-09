@@ -1601,6 +1601,263 @@ def cmd_mcp_server(args):
     server.run_stdio()
 
 
+# ── review (R2.16) — the §17 review DAG from the CLI ─────────────────────────
+
+
+def _default_review_pipeline() -> dict:
+    """The DESIGN_v2.md §17 review DAG, as pipeline config stages.
+
+    Lane B (defect review): change_analysis → parallel analyzers → scout →
+    evidence_retrieval → parallel reviewers → merge (dedup) → verify →
+    rank. Lane A (criteria evaluation) runs when the task has criteria;
+    publish_review is a no-op locally and posts comments for --pr.
+    """
+    return {
+        "review_pipeline": [
+            {"id": "change_analysis", "type": "change_analysis"},
+            {
+                "id": "static_evidence",
+                "parallel": True,
+                "steps": [
+                    {"id": "lsp", "type": "analyzer", "analyzer": "lsp"},
+                    {"id": "semgrep", "type": "analyzer", "analyzer": "semgrep"},
+                    {"id": "typecheck", "type": "analyzer", "analyzer": "typecheck"},
+                    {"id": "secrets", "type": "analyzer", "analyzer": "secrets"},
+                    {"id": "dependencies", "type": "analyzer", "analyzer": "dependencies"},
+                ],
+            },
+            {"id": "scout", "type": "agent", "role": "scout"},
+            {"id": "retrieval", "type": "evidence_retrieval"},
+            {
+                "id": "reviewers",
+                "parallel": True,
+                "steps": [
+                    {"id": "runtime", "type": "agent", "role": "runtime_reviewer"},
+                    {"id": "contracts", "type": "agent", "role": "contract_reviewer"},
+                    {"id": "security", "type": "agent", "role": "security_reviewer"},
+                ],
+            },
+            {"id": "candidate_merge", "type": "merge_findings"},
+            {
+                "id": "verify",
+                "type": "verify_findings",
+                "parallel": True,
+                "role": "verifier",
+            },
+            {"id": "rank", "type": "rank_findings"},
+            {
+                "id": "requirements",
+                "type": "criteria_eval",
+                "condition": "task.has_criteria",
+            },
+            {"id": "publish", "type": "publish_review"},
+        ]
+    }
+
+
+def _review_config(config: dict) -> dict:
+    """Pipeline config for the review DAG: the config's review_pipeline, or
+    the §17 default when the config has none."""
+    if config.get("review_pipeline"):
+        return config
+    merged = dict(config)
+    merged["review_pipeline"] = _default_review_pipeline()["review_pipeline"]
+    return merged
+
+
+def _make_review_router(config):
+    """Build the ModelRouter for the review DAG (module-level for test injection)."""
+    from engine.router import ModelRouter
+
+    return ModelRouter(config)
+
+
+def _default_github_repo(workdir: str) -> tuple[str, str]:
+    """Best-effort owner/repo for ``--pr``: gh default repo, then origin remote.
+
+    Raises ValueError when neither yields ``owner/repo``.
+    """
+    import json as _json
+
+    try:
+        from engine.github.checkout import _run_gh
+
+        out = _run_gh(["repo", "view", "--json", "nameWithOwner"]).strip()
+        name = _json.loads(out).get("nameWithOwner", "")
+        if "/" in name:
+            return tuple(name.split("/", 1))  # type: ignore[return-value]
+    except Exception:  # noqa: BLE001 — fall through to git remote
+        pass
+    try:
+        from engine.github.checkout import _run_git
+
+        url = _run_git(workdir, ["remote", "get-url", "origin"]).strip()
+        if url.endswith(".git"):
+            url = url[:-4]
+        for sep in ("github.com:", "github.com/"):
+            if sep in url:
+                slug = url.split(sep, 1)[1].rstrip("/")
+                owner, _, repo = slug.partition("/")
+                if owner and repo:
+                    return owner, repo
+    except Exception:  # noqa: BLE001 — fall through to error
+        pass
+    raise ValueError(
+        "cannot determine GitHub owner/repo for --pr — pass --owner/--repo, "
+        "or run inside a repo with a GitHub origin remote"
+    )
+
+
+def _make_change_source(args, workdir: str):
+    """Build the ChangeSource for the review command.
+
+    ``--pr <n>`` → PullRequestChangeSource (owner/repo from --owner/--repo or
+    gh/git fallbacks); ``--base`` + ``--head`` → CommitRangeChangeSource;
+    otherwise the local working tree (WorkingTreeChangeSource).
+    """
+    from engine.github.checkout import (
+        CommitRangeChangeSource,
+        PullRequestChangeSource,
+        WorkingTreeChangeSource,
+    )
+
+    pr_number = getattr(args, "pr", None)
+    if pr_number:
+        owner = getattr(args, "owner", None)
+        repo = getattr(args, "repo", None)
+        if not owner or not repo:
+            owner, repo = _default_github_repo(workdir)
+        return PullRequestChangeSource(owner, repo, int(pr_number))
+    base = getattr(args, "base", None)
+    head = getattr(args, "head", None)
+    if base and head:
+        return CommitRangeChangeSource(workdir, base, head)
+    return WorkingTreeChangeSource(workdir)
+
+
+def _format_review_report(task: dict, result: dict) -> str:
+    """Combine Lane B (defect findings) + Lane A (criteria verdicts) into one
+    human-readable report."""
+    lines: list[str] = []
+    lines.append("=" * 72)
+    lines.append(f"GitReins review — {task.get('id', 'review')}")
+    changed = task.get("changed_files") or []
+    preview = ", ".join(changed[:8]) + (" …" if len(changed) > 8 else "")
+    lines.append(f"Change: {len(changed)} file(s): {preview}")
+    base = task.get("base_sha", "")
+    head = task.get("head_sha", "")
+    if base and head:
+        lines.append(f"Range: {base[:8]}...{head[:8]}")
+    lines.append("=" * 72)
+
+    stages = result.get("stages", {})
+    rank_stage = stages.get("rank", {})
+    ranked = rank_stage.get("data", {}).get("ranked") if rank_stage else None
+    findings = ranked if ranked is not None else list(task.get("findings") or [])
+
+    lines.append("")
+    lines.append(f"Lane B — defect findings ({len(findings)})")
+    if not findings:
+        lines.append("  (no findings — change looks clean)")
+    else:
+        for f in findings:
+            loc = f.get("file") or "<repo>"
+            if isinstance(f.get("line"), int):
+                loc = f"{loc}:{f['line']}"
+            sev = f.get("severity") or f.get("impact") or "?"
+            conf = f.get("verifier_confidence")
+            conf_s = f" conf={conf:.2f}" if isinstance(conf, (int, float)) else ""
+            verdict = f.get("verdict")
+            v_s = f" [{verdict}]" if verdict else ""
+            claim = str(f.get("claim") or "")
+            lines.append(f"  [{sev}]{conf_s}{v_s} {loc}: {claim}")
+
+    criteria = task.get("criteria") or []
+    verdict_items = task.get("criteria_verdicts") or []
+    lines.append("")
+    lines.append(f"Lane A — criteria evaluation ({len(criteria)} criterion/criteria)")
+    if not criteria:
+        lines.append("  (no criteria provided — Lane A skipped)")
+    elif not verdict_items:
+        lines.append("  (criteria evaluation did not run)")
+    else:
+        for item in verdict_items:
+            mark = "✓" if item.get("status") == "PASS" else "✗"
+            detail = str(item.get("detail", ""))[:200]
+            lines.append(f"  {mark} {item.get('criterion', '?')}: {detail}")
+
+    lines.append("")
+    lines.append("=" * 72)
+    return "\n".join(lines)
+
+
+def cmd_review(args):
+    """Run the §17 review DAG against a change (R2.16).
+
+    Change sources: local working tree (default), commit range (--base/--head),
+    or GitHub pull request (--pr <n>). The DAG runs Lane B defect review
+    (scout → retrieval → parallel reviewers → dedup → adversarial verify →
+    rank) plus Lane A criteria evaluation when ``--criteria`` is given, and
+    prints one combined report. Exit code 0 when the DAG ran; 1 on machinery
+    errors (findings and failed criteria are reported, not exits).
+    """
+    workdir = get_workdir()
+    config = load_config(workdir)
+
+    try:
+        source = _make_change_source(args, workdir)
+    except ValueError as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        sys.exit(1)
+
+    try:
+        diff = source.diff()
+        changed_files = source.changed_files()
+        base_sha = source.base_sha()
+        head_sha = source.head_sha()
+    except Exception as exc:  # noqa: BLE001 — change-source boundary
+        print(f"Error: could not read change: {exc}", file=sys.stderr)
+        sys.exit(1)
+
+    criteria = list(getattr(args, "criteria", None) or [])
+    task = {
+        "id": "review",
+        "title": "Change review",
+        "criteria": criteria,
+        "changed_files": changed_files,
+        "diff": diff.text,
+        "diff_context": diff.text,
+        "change_source": source,
+        "base_sha": base_sha,
+        "head_sha": head_sha,
+    }
+    pr_number = getattr(args, "pr", None)
+    if pr_number:
+        task["pr_number"] = int(pr_number)
+        task["owner"] = getattr(source, "owner", "")
+        task["repo"] = getattr(source, "repo", "")
+
+    if not changed_files:
+        print("No changed files to review — the working tree is clean.")
+        sys.exit(0)
+
+    from engine.pipeline import Pipeline
+
+    router = _make_review_router(config)
+    pipeline = Pipeline(_review_config(config), workdir, router=router)
+    result = pipeline.run_review(task)
+
+    print(_format_review_report(task, result))
+
+    failed = [sid for sid, s in result.get("stages", {}).items() if not s.get("passed", True)]
+    if failed:
+        print(
+            f"\nReview pipeline errors in stage(s): {', '.join(failed)}",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+
 def main():
     parser = argparse.ArgumentParser(description="GitReins — Git-Native Agent Co-Harness")
     parser.add_argument("--version", action="version", version=f"gitreins {__version__}")
@@ -1739,6 +1996,25 @@ def main():
     report_p.add_argument("-n", type=int, default=10, help="Number of recent verdicts to show")
     report_p.add_argument("--interactive", "-i", action="store_true", help="Interactive TUI mode")
 
+    # review — the §17 review DAG from the CLI (R2.16)
+    review_p = sub.add_parser(
+        "review",
+        help="Run the §17 review DAG against the change (local tree, commit range, or PR)",
+    )
+    review_p.add_argument(
+        "--pr", type=int, help="Review GitHub pull request <n> (PullRequestChangeSource)"
+    )
+    review_p.add_argument("--owner", help="GitHub owner for --pr (default: gh default repo, then origin remote)")
+    review_p.add_argument("--repo", help="GitHub repo for --pr")
+    review_p.add_argument("--base", help="Base ref for a commit-range review (with --head)")
+    review_p.add_argument("--head", help="Head ref for a commit-range review (with --base)")
+    review_p.add_argument(
+        "--criteria",
+        action="append",
+        default=[],
+        help="Task criteria for Lane A evaluation (repeatable)",
+    )
+
     args = parser.parse_args()
 
     # Setup logging
@@ -1780,6 +2056,8 @@ def main():
         cmd_setup_tools(args)
     elif args.command == "report":
         cmd_report(args)
+    elif args.command == "review":
+        cmd_review(args)
     else:
         parser.print_help()
 
