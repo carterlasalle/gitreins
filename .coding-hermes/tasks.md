@@ -150,23 +150,30 @@ Extract the good parts of `AgenticEvaluator` into `engine/agents/runner.py`:
 - [x] R2-15 tests: CommitAuditor kept (30 tests), review DAG independent (242 targeted pass; full suite 1673 passed / 3 pre-existing env-artifact failures reproduced on parent 51877e6 — mypy-not-installed + LSP roundtrip)
 > Judge verdict 043adf41: tier2 COMPLETE 4/4 PASS (301 targeted tests run, exit 0; ruff clean); tier1 lint+secrets PASS, tier1 tests FAIL = pre-existing env artifact (mypy missing, LSP) — identical on parent commit. R2.16 ready.
 
-### R2.16 — Review DAG wiring + `gitreins review` entrypoint
-- [ ] R2-16 wire full review_pipeline (DESIGN §17) into the Pipeline
-- [ ] R2-16 add `gitreins review` command (local ChangeSource) + `gitreins review --pr <n>`
-- [ ] R2-16 criteria eval (Lane A) + defect review (Lane B) → combined review
-- [ ] R2-16 tests: review DAG E2E + gitreins review CLI
+### R2.16 — Review DAG wiring + `gitreins review` entrypoint ✅ 4a52557 (judge tier2 COMPLETE 4c52c119)
+- [x] R2-16 wire full review_pipeline (DESIGN §17) into the Pipeline (4a52557, 2026-08-09)
+- [x] R2-16 add `gitreins review` command (local ChangeSource) + `gitreins review --pr <n>` (4a52557)
+- [x] R2-16 criteria eval (Lane A) + defect review (Lane B) → combined review (4a52557)
+- [x] R2-16 tests: review DAG E2E + gitreins review CLI (4a52557)
+> Judge verdict 4c52c119: tier2 COMPLETE 3/3 PASS (32 targeted tests; full suite 1717 passed/10
+> skipped in clean env; ruff clean; guard PASS). tier1 tests step FAIL = judge-subprocess
+> artifact (exit 2/-9/-15 mid-suite at ~8%, output cut, no failure text — reproduced across
+> all judge runs; tier2's own full-suite verification passed). ENVFIX 9c9e8c6 (strip
+> GITREINS_MAX_* from subprocess envs) confirmed live + regression tests pass.
 
-### DOCS-001 — Final documentation pass re-run (after R2.16)
-- [ ] DOCS-001 update README for the completed R2.7–R2.16 work: review DAG
+### DOCS-001 — Final documentation pass re-run (after R2.16) ✅ f290e9a (judge tier2 COMPLETE facc5594)
+- [x] DOCS-001 update README for the completed R2.7–R2.16 work: review DAG
   (orchestrator, reviewers, verifier, ranker, dedup, writer), ChangeSource +
   `gitreins review` / `gitreins review --pr <n>`, PR sandbox, intent system,
-  ReviewLearning/provenance, propagate_policy, and the CodeRabbit-replacement.
-- [ ] DOCS-001 refresh docs/architecture-v2.md + docs/ index to match built code
-- [ ] DOCS-001 verify GitHub repo description + topics still match (`gh repo edit`)
-- [ ] DOCS-001 formatting bar: README still skimmable (title + badges + nav +
-  diagram + tables); `uv run ruff format --check .` passes (lints README/docs
-  Python blocks)
-- [ ] DOCS-001 judge + commit + push
+  ReviewLearning/provenance, propagate_policy, and the CodeRabbit-replacement. (f290e9a, 2026-08-09)
+- [x] DOCS-001 refresh docs/architecture-v2.md + docs/ index to match built code (f290e9a)
+- [x] DOCS-001 verify GitHub repo description + topics still match (`gh repo edit`) (f290e9a)
+- [x] DOCS-001 formatting bar: README skimmable; `uv run ruff format --check --preview README.md docs/` → 13 files already formatted (f290e9a)
+- [x] DOCS-001 judge + commit + push (f290e9a)
+> Judge verdict facc5594: tier2 COMPLETE 3/3 PASS (README covers all R2.7–R2.16 features
+> with accurate module/commit refs; architecture-v2.md matches built code; ruff format
+> check exit 0). tier1 tests step FAIL = SIGKILL -9 judge-subprocess artifact (120s-ish
+> mid-suite kill, no failure text) — not a code failure.
 
 ## NEVER-DONE (audit — run only when board is empty)
 - Full regression: `gitreins guard`, evaluator suite, review DAG E2E against a
