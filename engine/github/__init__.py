@@ -12,7 +12,9 @@ everywhere:
 
 Public surface: the three sources + Diff/ChangeSource protocol
 (checkout.py), publish_comments (publisher.py), set_status_check (checks.py),
-and run_pr_review (app.py) — the thin PR glue over the orchestrator.
+run_pr_review (app.py) — the thin PR glue over the orchestrator — and the
+R2.11 execution sandbox (sandbox.py) — the ephemeral container/microVM that
+PR service mode runs untrusted review code in (DESIGN_v2.md §9 ⚠️).
 """
 
 from engine.github.app import PrReviewResult, run_pr_review
@@ -26,6 +28,16 @@ from engine.github.checkout import (
     WorkingTreeChangeSource,
 )
 from engine.github.publisher import PublishResult, publish_comments
+from engine.github.sandbox import (
+    DockerSandbox,
+    Sandbox,
+    SandboxError,
+    SandboxResult,
+    SandboxTimeoutError,
+    SandboxUnavailableError,
+    clone_pr_checkout,
+    scrub_env,
+)
 
 __all__ = [
     "ChangeSource",
@@ -40,4 +52,12 @@ __all__ = [
     "set_status_check",
     "PrReviewResult",
     "run_pr_review",
+    "Sandbox",
+    "SandboxError",
+    "SandboxUnavailableError",
+    "SandboxTimeoutError",
+    "SandboxResult",
+    "DockerSandbox",
+    "clone_pr_checkout",
+    "scrub_env",
 ]

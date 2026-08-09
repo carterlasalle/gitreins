@@ -20,8 +20,11 @@ a block decision, so no model ever gets to judge a fuzzy ``7.9 vs 8.1``
 score (DESIGN_v2.md §12: "Don't trust LLM CVE scores as the gate").
 
 The execution sandbox (DESIGN_v2.md §9 ⚠️ — ephemeral container/microVM for
-PR service mode) is **out of scope** here (R2.11); locally ``run_command``
-executes on the host, exactly like the evaluator's ``_tool_run_command``.
+PR service mode, R2.11) is **optional**: pass ``sandbox=`` to
+:class:`VerifierAgent` and its ``run_command`` tool executes inside the
+sandbox (engine/github/sandbox.py) instead of on the host. Without a
+sandbox, ``run_command`` executes on the host exactly like the evaluator's
+``_tool_run_command`` — local mode unchanged.
 
 NOTE: no ``from __future__ import annotations`` here — the schema dataclasses
 must carry real types so ``parse_response`` can instantiate the nested
@@ -35,8 +38,10 @@ import subprocess
 from dataclasses import dataclass, field
 
 from engine.agents import AgentRunner, Budget
+from engine.agents.runner import RoleRouter
 from engine.agents.schemas import schema_to_prompt
 from engine.agents.tools import Tool, codeintel_tools, make_read_file_tool
+from engine.github.sandbox import Sandbox, SandboxError, SandboxTimeoutError
 
 __all__ = [
     "VerifierFinding",
@@ -308,13 +313,16 @@ def serialize_candidate(candidate: VerifierCandidate) -> str:
 # ── Verifier tool belt ───────────────────────────────────────────────────
 
 
-def _make_run_command_tool(workdir: str, timeout: int = 30) -> Tool:
+def _make_run_command_tool(
+    workdir: str, timeout: int = 30, sandbox: Sandbox | None = None
+) -> Tool:
     """Build the run_command Tool bound to ``workdir``.
 
     Mirrors AgenticEvaluator._tool_run_command (DESIGN_v2.md §9: "already
-    present") — ``subprocess.run(cmd, shell=True, cwd=workdir)`` directly on
-    the host. Acceptable for local trusted coding; the PR service-mode
-    sandbox is R2.11, out of scope here.
+    present"). With ``sandbox`` (R2.11, PR service mode) the command runs
+    inside the ephemeral container via ``sandbox.run`` — never on the host;
+    without one it runs ``subprocess.run(cmd, shell=True, cwd=workdir)``
+    directly on the host (local trusted mode, unchanged).
     """
 
     def _run_command(cmd: str = "", command: str | None = None) -> dict:
@@ -322,22 +330,30 @@ def _make_run_command_tool(workdir: str, timeout: int = 30) -> Tool:
         if not cmd:
             return {"error": "No command provided"}
         try:
-            result = subprocess.run(
-                cmd,
-                shell=True,
-                capture_output=True,
-                text=True,
-                timeout=timeout,
-                cwd=workdir,
-            )
-            output = result.stdout + result.stderr
-            if len(output) > 4000:
-                output = output[:4000] + f"\n... [truncated, exit_code={result.returncode}]"
-            return {"cmd": cmd, "exit_code": result.returncode, "output": output}
+            if sandbox is not None:
+                result = sandbox.run(cmd, cwd=sandbox.cwd, timeout=timeout)
+                exit_code, output = result.exit_code, result.stdout + result.stderr
+            else:
+                proc = subprocess.run(
+                    cmd,
+                    shell=True,
+                    capture_output=True,
+                    text=True,
+                    timeout=timeout,
+                    cwd=workdir,
+                )
+                exit_code, output = proc.returncode, proc.stdout + proc.stderr
         except subprocess.TimeoutExpired:
             return {"cmd": cmd, "error": f"Command timed out after {timeout}s"}
+        except SandboxTimeoutError:
+            return {"cmd": cmd, "error": f"Command timed out after {timeout}s"}
+        except SandboxError as e:
+            return {"cmd": cmd, "error": str(e)}
         except Exception as e:  # noqa: BLE001 — tool boundary: report, don't crash
             return {"cmd": cmd, "error": str(e)}
+        if len(output) > 4000:
+            output = output[:4000] + f"\n... [truncated, exit_code={exit_code}]"
+        return {"cmd": cmd, "exit_code": exit_code, "output": output}
 
     return Tool(
         name="run_command",
@@ -489,15 +505,19 @@ def _make_search_pattern_tool(workdir: str, timeout: int = 60) -> Tool:
     )
 
 
-def _verifier_tools(workdir: str, command_timeout: int = 30) -> list[Tool]:
+def _verifier_tools(
+    workdir: str, command_timeout: int = 30, sandbox: Sandbox | None = None
+) -> list[Tool]:
     """The verifier's tool belt (DESIGN_v2.md §9).
 
     run_command / read_file / search_pattern — the "already present"
-    execution tools — plus the R2.5 codeintel tools. Sandbox tools
-    (sandbox_read/sandbox_write) are auto-injected by AgentRunner.
+    execution tools — plus the R2.5 codeintel tools. With ``sandbox`` (R2.11,
+    PR service mode) run_command executes inside the sandbox instead of on
+    the host. Sandbox tools (sandbox_read/sandbox_write) are auto-injected by
+    AgentRunner.
     """
     return [
-        _make_run_command_tool(workdir, timeout=command_timeout),
+        _make_run_command_tool(workdir, timeout=command_timeout, sandbox=sandbox),
         make_read_file_tool(workdir),
         _make_search_pattern_tool(workdir),
         *codeintel_tools(workdir),
@@ -512,11 +532,34 @@ class VerifierAgent(AgentRunner):
     execution + codeintel tool belt, the :class:`VerifierFindings` output
     schema, and ``model_role='verifier'`` (resolved from the
     ``review.models.verifier`` config block; absent → env-default client,
-    never raises). The execution sandbox is deliberately NOT implemented
-    here (R2.11 / PR service-mode, out of scope).
+    never raises). ``sandbox`` (R2.11, PR service mode) routes the
+    run_command tool through the ephemeral container
+    (engine/github/sandbox.py) instead of the host; without it, local host
+    execution is unchanged.
     """
 
     MODEL_ROLE = "verifier"
+
+    def __init__(
+        self,
+        router: RoleRouter | None = None,
+        *,
+        sandbox: Sandbox | None = None,
+        **kwargs,
+    ):
+        """``sandbox``: optional :class:`~engine.github.sandbox.Sandbox` —
+        when set, run_command executes inside it (PR service mode, R2.11);
+        when None, run_command runs on the host (local mode, unchanged).
+
+        Stored as ``_exec_sandbox`` because ``AgentRunner.sandbox`` is
+        already taken by the scratch-state property (sandbox_read/write)."""
+        super().__init__(router=router, **kwargs)
+        self._exec_sandbox = sandbox
+
+    @property
+    def exec_sandbox(self) -> Sandbox | None:
+        """The execution sandbox, if any (PR service mode, R2.11)."""
+        return self._exec_sandbox
 
     def run(
         self,
@@ -553,7 +596,11 @@ class VerifierAgent(AgentRunner):
                 output_schema=schema_to_prompt(VerifierFindings)
             ),
             user_prompt=user_prompt,
-            tools=_verifier_tools(self.workdir, command_timeout=self.command_timeout),
+            tools=_verifier_tools(
+                self.workdir,
+                command_timeout=self.command_timeout,
+                sandbox=self._exec_sandbox,
+            ),
             output_schema=VerifierFindings,
             model_role=self.MODEL_ROLE,
             budget=budget if budget is not None else Budget(),
