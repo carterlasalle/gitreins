@@ -179,3 +179,23 @@ Extract the good parts of `AgenticEvaluator` into `engine/agents/runner.py`:
 - Full regression: `gitreins guard`, evaluator suite, review DAG E2E against a
   seeded repo, PR-mode smoke.
 - CI/CD health, docs gate (README_v2, AGENTS, SECURITY, runbooks, repo description/topics).
+
+### INFRA-LLM-ENV-001 — strip LLM credential vars from judge/guard subprocess envs
+- [ ] INFRA-LLM-ENV-001 guards.py `_sanitized_env` + pipeline.py tier1 script
+  runner + evaluator.py `_tool_run_command` + verifier.py `run_command` all
+  exclude GITREINS_LLM_* AND fallback credential keys (OPENROUTER_API_KEY,
+  OPENAI_API_KEY, ANTHROPIC_API_KEY, DEEPSEEK_API_KEY, NEURALWATT_API_KEY)
+- [ ] INFRA-LLM-ENV-001 regression test: `tests/test_llm.py` passes with
+  GITREINS_LLM_API_KEY + OPENROUTER_API_KEY set in env (proven repro:
+  test_missing_all_keys_returns_empty asserts '' but gets sk-or-v1-… leak)
+- [ ] INFRA-LLM-ENV-001 targeted suites green; ruff clean; gitreins guard PASS
+> Root cause (proven 2026-08-09): ENVFIX 9c9e8c6 stripped GITREINS_MAX_* from
+> judge subprocess envs but NOT LLM credential vars. Every judge run since R2-3
+> fails tier1 tests mid-suite (~8%, exit 2/-9/-15) because the tier1 pytest
+> subprocess inherits GITREINS_LLM_API_KEY/OPENROUTER_API_KEY and
+> test_llm.py env-priority tests break (clean env: 58 passed; polluted: 1 failed).
+> Tier2's own full-suite run passes (1717 passed) because it runs in clean env —
+> which is why this was mislabeled "judge-subprocess artifact" for 13 phases.
+> The tier2 evaluator process keeps keys in-process (LLMClient reads env at
+> construction); only spawned subprocesses get them stripped — same pattern as
+> ENVFIX. Judge tier1 tests go green after this.
