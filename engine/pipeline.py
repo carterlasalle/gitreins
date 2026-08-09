@@ -461,8 +461,6 @@ class Pipeline:
           ``commit_audit.strictness`` — "lenient" | "standard" (default) | "strict"
           ``commit_audit.max_iterations`` — int, default 3
           ``commit_audit.suggest_message`` — bool, default True
-          ``commit_audit.review_score_threshold`` — float, default 8.0 (GR-066)
-          ``commit_audit.review_score_offset`` — float, default 1.0 (GR-066)
         """
         step_id = step_def.get("id", "commit_audit")
 
@@ -477,21 +475,12 @@ class Pipeline:
         # Read config for commit_audit settings
         config = self._load_commit_audit_config()
 
-        score_threshold = float(config.get("review_score_threshold", 8.0))
-        score_offset = float(config.get("review_score_offset", 1.0))
-
         auditor = CommitAuditor(
             self._llm,
             self.workdir,
             strictness=config.get("strictness", "standard"),
             max_iterations=config.get("max_iterations", 3),
             suggest_message=config.get("suggest_message", True),
-            review_mode=config.get("review_mode", "message"),
-            review_checks=config.get("review_checks", None),
-            review_severity=config.get("review_severity", "standard"),
-            review_suggest_fix=config.get("review_suggest_fix", True),
-            review_score_threshold=score_threshold,
-            review_score_offset=score_offset,
         )
 
         message = task.get("commit_message", "")
@@ -532,71 +521,6 @@ class Pipeline:
         passed = result.valid or mode != "block"
 
         output_lines: list[str] = []
-        # ── CVE-style scoring (GR-066) ──
-        all_review_issues = getattr(result, "review_issues", [])
-        if all_review_issues:
-            # Determine highest effective score
-            max_effective = 0.0
-            for ri in all_review_issues:
-                raw_score = ri.get("score", 0.0)
-                effective = raw_score * score_offset
-                ri["effective_score"] = effective
-                if effective > max_effective:
-                    max_effective = effective
-
-            sev_marker = {
-                "critical": "🔴 CRITICAL",
-                "high": "🟠 HIGH",
-                "medium": "🟡 MEDIUM",
-                "low": "🟢 LOW",
-                "info": "ℹ️ INFO",
-            }
-            output_lines.append(
-                f"⚠ Commit review — {len(all_review_issues)} issue(s) found (overall: {max_effective:.1f}/{score_threshold:.1f})"
-            )
-            review_summary = getattr(result, "review_summary", "")
-            if review_summary:
-                output_lines.append(f"   {review_summary}")
-            output_lines.append("")
-
-            blocked = False
-            warn_issues = False
-            for ri in all_review_issues:
-                sev = sev_marker.get(ri.get("severity", "info"), "ℹ️ INFO")
-                cat = ri.get("category", "unknown")
-                file_ref = f"{ri.get('file', '')}:{ri.get('line', 0)}"
-                title = ri.get("title", "")
-                desc = ri.get("description", "")
-                sugg = ri.get("suggestion", "")
-                effective = ri.get("effective_score", 0.0)
-
-                # Score-based action marker (GR-066)
-                if effective >= score_threshold:
-                    action_mark = "🚫 BLOCK"
-                    blocked = True
-                elif effective >= score_threshold * 0.75:
-                    action_mark = "⚠️ WARN"
-                    warn_issues = True
-                else:
-                    action_mark = "ℹ️ INFO"
-
-                output_lines.append(
-                    f"  {file_ref} [{cat}] [{sev}] {action_mark} (score: {effective:.1f}) — {title}"
-                )
-                if desc:
-                    output_lines.append(f"    {desc}")
-                if sugg:
-                    output_lines.append(f"    Fix: {sugg}")
-                output_lines.append("")
-
-            # Apply scoring to pass/fail
-            if blocked and mode == "block":
-                passed = False
-            elif blocked and mode == "warn":
-                output_lines.append("(Warning: issues above threshold — review recommended)")
-            elif warn_issues:
-                output_lines.append("(Warning: issues in warning range — review recommended)")
-
         # ── Message audit ──
         if result.valid:
             output_lines.append("✓ Commit message looks good.")
@@ -624,8 +548,6 @@ class Pipeline:
                 "suggested_message": result.suggested_message,
                 "mode": mode,
                 "iterations_used": result.iterations_used,
-                "review_issues": getattr(result, "review_issues", []),
-                "review_summary": getattr(result, "review_summary", ""),
             },
         )
 

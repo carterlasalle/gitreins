@@ -34,11 +34,7 @@ The configuration system supports three load layers, type coercion for human-fri
 | `history_path` | `str` | `".gitreins/history"` | Path to history storage (relative to repo) |
 | `history_storage` | `str` | `"git"` | `"git"` or `"filesystem"` |
 | `history_max_verdicts` | `int` | `1000` | Auto-prune threshold |
-| `commit_audit_review_mode` | `str` | `review` | Code review: message, review, or agent |
 | `commit_audit_mode` | `str` | `warn` | Audit action: warn, block, or suggest |
-| `commit_audit_review_severity` | `str` | `standard` | Severity: critical-only, standard, all |
-| `commit_audit_review_score_threshold` | `float` | `8.0` | Score >= threshold blocks commit |
-| `commit_audit_review_score_offset` | `float` | `1.0` | Per-model multiplier |
 | `lsp` | `bool` | `false` | Enable LSP diagnostics guard |
 | `lsp_tools` | `list[str]` | `[]` | LSP servers (pylsp, gopls, etc.) |
 | `static_analysis` | `bool` | `false` | Enable static analysis guard |

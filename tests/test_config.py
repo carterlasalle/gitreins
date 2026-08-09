@@ -28,17 +28,6 @@ def test_defaults_max_iterations():
     assert d.max_iterations == 100.0
 
 
-def test_defaults_review_severity():
-    d = GitReinsDefaults()
-    assert d.commit_audit_review_severity == "standard"
-
-
-def test_defaults_scoring_threshold():
-    d = GitReinsDefaults()
-    assert d.commit_audit_review_score_threshold == 8.0
-    assert d.commit_audit_review_score_offset == 1.0
-
-
 def test_defaults_source_is_builtin():
     d = GitReinsDefaults()
     assert "built-in" in d._source
@@ -97,15 +86,13 @@ def test_overlay_nested_commit_audit():
             "defaults": {
                 "commit_audit": {
                     "mode": "block",
-                    "review_checks": {"style": True},
                 }
             }
         }
     )
     assert result.commit_audit_mode == "block"
-    assert result.commit_audit_review_checks_style is True
     # unchanged defaults remain
-    assert result.commit_audit_review_checks_bugs is True
+    assert result.commit_audit_suggest_message is True
 
 
 # ── to_config_dict ───────────────────────────────────────────
@@ -122,7 +109,7 @@ def test_to_config_dict_includes_commit_audit_nested():
     result = d.to_config_dict()
     assert "commit_audit" in result
     assert result["commit_audit"]["mode"] == "warn"
-    assert result["commit_audit"]["review_checks"]["bugs"] is True
+    assert result["commit_audit"]["suggest_message"] is True
 
 
 def test_to_config_dict_formats_max_time_as_string():

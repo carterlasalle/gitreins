@@ -147,132 +147,6 @@ For invalid messages:
 The "issues" array explains what's wrong. Use imperative mood and precise file/function references from the diff."""
 
 
-# ── Code review system prompt (GR-065: CodeRabbit-style review) ─
-
-COMMIT_REVIEW_SYSTEM_PROMPT = """\
-You are a senior code reviewer for GitReins. Your job is to review staged
-changes in a git diff and identify issues — bugs, security vulnerabilities,
-anti-patterns, style violations, and performance problems.
-
-**Output Format (JSON only — no markdown fences, no extra text):**
-
-For clean code:
-{"valid": true, "summary": "No issues found."}
-
-For code with issues:
-{
-  "valid": false,
-  "summary": "Brief overall assessment (1 sentence).",
-  "overall_score": 8.5,
-  "issues": [
-    {
-      "file": "relative/path/file.py",
-      "line": 42,
-      "severity": "critical|high|medium|low|info",
-      "score": 9.0,
-      "category": "bugs|security|anti_patterns|style|performance",
-      "title": "Short issue title (5-10 words)",
-      "description": "What's wrong and why it matters.",
-      "suggestion": "How to fix it — specific, actionable, with code if helpful."
-    }
-  ]
-}
-
-**CVE-Style Severity Scoring (1-10 numeric):**
-
-Each issue MUST include a numeric ``score`` (1.0–10.0) reflecting real-world impact:
-
-| Score Range | Severity Label | Description |
-|:-----------:|:--------------:|-------------|
-| 9.0–10.0 | critical | Remote code execution, data breach, auth bypass, production outage guaranteed. |
-| 7.0–8.9  | high | User-visible bug, data corruption, security vulnerability with known exploit pattern, incident-likely. |
-| 4.0–6.9  | medium | Code smell, anti-pattern, maintenance burden, potential future bug, tech debt. |
-| 1.0–3.9  | low | Style nit, naming convention, minor readability improvement, informational. |
-| 0.0       | info | Observation — not a problem, just something to be aware of. |
-
-The ``overall_score`` MUST equal the highest single issue score in the report (worst case). If no issues: ``overall_score = 0.0``.
-
-**Review Categories (which ones to check are passed in the prompt):**
-
-*BUGS:*
-- Logic errors, off-by-one, inverted conditions
-- Missing null/None checks before dereference
-- Incorrect exception handling (bare except, swallowing errors silently)
-- Race conditions (shared mutable state without locks)
-- Resource leaks (unclosed files, connections, sockets)
-- Wrong argument order or type mismatches that would cause runtime errors
-- Missing error propagation (returning nil/None instead of wrapping errors)
-
-*SECURITY:*
-- Hardcoded credentials, API keys, tokens, secrets
-- SQL injection via string concatenation (use parameterized queries)
-- Command injection via shell=True with user input
-- Path traversal (unsanitized file paths from user input)
-- Missing authentication or authorization checks
-- Insecure random generation (using math/random instead of crypto)
-- Missing input validation on user-supplied data
-- Sensitive data logged or exposed in error messages
-- Insecure deserialization (pickle, yaml.load without SafeLoader)
-- Missing Content-Security-Policy or other security headers
-- XXE vulnerabilities in XML parsing
-- Open redirect via unvalidated URL parameters
-
-*ANTI_PATTERNS:*
-- God functions/methods (too long, too many responsibilities)
-- Magic numbers without named constants
-- Duplicate code that should be extracted
-- Tight coupling between unrelated modules
-- Premature optimization (complex code for unmeasured performance gain)
-- Commented-out code left in production
-- TODO/FIXME without a tracking issue reference
-- Using mutable defaults in function signatures (Python: def f(x=[]))
-- Mixing abstraction levels in the same function
-- Catching Exception and continuing silently
-- Inconsistent error handling patterns
-
-*STYLE:*
-- Naming conventions violated (snake_case vs camelCase, etc.)
-- Inconsistent formatting (not matching project style)
-- Missing or misleading docstrings/comments
-- Overly complex one-liners (hard to read)
-- Dead code (unreachable statements, unused variables after dead assignments)
-
-*PERFORMANCE:*
-- N+1 query patterns (query inside loop)
-- Unnecessary allocations in hot paths
-- Blocking I/O on async/event-loop threads
-- Missing caching for expensive repeated operations
-- Inefficient data structures (list for membership testing vs set)
-- Large objects passed by value instead of reference
-- Missing lazy evaluation (eager loading when streaming would work)
-- Regex compiled inside a loop instead of once
-
-**Severity Guidelines:**
-
-- `critical`: Security vulnerability, data loss risk, or crash guaranteed in common paths. BLOCK merge.
-- `high`: Bug with user-visible impact, likely to cause incidents. Should block merge.
-- `medium`: Code smell or anti-pattern that will cause maintenance pain. Warn but allow.
-- `low`: Style nit, naming convention, minor improvement. Informational.
-- `info`: Observation — not a problem, just something to be aware of.
-
-**Review Principles:**
-
-1. Be specific. Reference exact file paths, line numbers, and code patterns.
-2. Be actionable. Every issue must include a suggestion on how to fix it.
-3. Be proportional. Flag real problems; don't nitpick for the sake of it.
-4. Respect the severity filter. Don't report `low` issues in `critical-only` mode.
-5. Consider the diff holistically. If a change looks incomplete (e.g., added a function but never called it), flag it.
-6. Trust but verify. If the diff adds tests, check that they test meaningful behavior — not just test the mock.
-7. No false positives. If you're unsure whether something is a bug, mention it as `info` with a caveat, not as `medium`.
-
-**What NOT to flag:**
-- Pre-existing issues in untouched code (focus on the diff only)
-- Test fixture keys/configs that are clearly test-only (e.g., `sk-test-...`)
-- Formatting differences that match the project's auto-formatter output
-- Comments that add value (explain WHY, not WHAT)
-- Reasonable design choices that differ from your preference but are not wrong"""
-
-
 COMMIT_AUDIT_USER_PROMPT = """\
 ## STRICTNESS: {strictness}
 ## MODE: {mode}
@@ -316,23 +190,6 @@ INSTRUCTIONS_BY_STRICTNESS = {
     "standard": INSTRUCTIONS_STANDARD,
     "strict": INSTRUCTIONS_STRICT,
 }
-
-
-REVIEW_USER_PROMPT = """\
-## COMMIT MESSAGE
-{message}
-
-## STAGED DIFF
-{diff}
-
-## REVIEW CONFIGURATION
-Active checks: {checks}
-Severity filter: {severity}
-Fix suggestions: {fix}
-
-## INSTRUCTIONS
-Review the staged diff for issues. Check ONLY the categories listed above.
-Respect the severity filter. {fix}"""
 
 
 # ── Audit tools — same pattern as evaluator tools ────────────────
@@ -398,60 +255,12 @@ class CommitAuditResult:
     iterations_used: int = 0
     """How many LLM iterations were consumed."""
 
-    review_issues: list = field(default_factory=list)
-    """Full ReviewIssue dicts from CodeRabbit-style review (GR-065).
-    Each dict has: file, line, severity, category, title, description, suggestion."""
-
-    review_summary: str = ""
-    """Summary from the review (GR-065)."""
-
     @property
     def action(self) -> str:
         """The action the hook should take: 'pass', 'warn', or 'block'."""
         if self.valid:
             return "pass"
         return "block"  # block maps to reject; mode determines warn vs block upstream
-
-
-@dataclass
-class ReviewIssue:
-    """A single issue found during code review (GR-065, GR-066)."""
-
-    file: str
-    line: int
-    severity: str  # critical|high|medium|low|info
-    category: str  # bugs|security|anti_patterns|style|performance
-    title: str
-    description: str = ""
-    suggestion: str = ""
-    score: float = 0.0  # GR-066: CVE-style 1-10 score
-
-    @classmethod
-    def from_dict(cls, d: dict) -> "ReviewIssue":
-        return cls(
-            file=d.get("file", ""),
-            line=int(d.get("line", 0)),
-            severity=d.get("severity", "info"),
-            category=d.get("category", "style"),
-            title=d.get("title", ""),
-            description=d.get("description", ""),
-            suggestion=d.get("suggestion", ""),
-            score=float(d.get("score", 0.0)),
-        )
-
-
-@dataclass
-class CommitReviewResult:
-    """Result of a CodeRabbit-style commit review (GR-065, GR-066)."""
-
-    valid: bool
-    summary: str = ""
-    issues: list[ReviewIssue] = field(default_factory=list)
-    message_valid: bool = True
-    message_issues: list[str] = field(default_factory=list)
-    suggested_message: str = ""
-    iterations_used: int = 0
-    overall_score: float = 0.0  # GR-066: worst issue score, 0 if no issues
 
 
 # ═════════════════════════════════════════════════════════════════
@@ -474,30 +283,12 @@ class CommitAuditor:
         strictness: str = "standard",
         max_iterations: int = 3,
         suggest_message: bool = True,
-        review_mode: str = "message",
-        review_checks: dict | None = None,
-        review_severity: str = "standard",
-        review_suggest_fix: bool = True,
-        review_score_threshold: float = 8.0,
-        review_score_offset: float = 1.0,
     ):
         self.llm = llm
         self.workdir = os.path.abspath(workdir)
         self.strictness = strictness
         self.max_iterations = max_iterations
         self.suggest_message = suggest_message
-        self.review_mode = review_mode
-        self.review_checks = review_checks or {
-            "bugs": True,
-            "security": True,
-            "anti_patterns": True,
-            "style": False,
-            "performance": False,
-        }
-        self.review_severity = review_severity
-        self.review_suggest_fix = review_suggest_fix
-        self.review_score_threshold = review_score_threshold
-        self.review_score_offset = review_score_offset
 
     # ── Public API ──────────────────────────────────────────────
 
@@ -515,10 +306,6 @@ class CommitAuditor:
         Returns:
             CommitAuditResult with valid/issue/suggested_message.
         """
-        if self.review_mode != "message":
-            # Code review mode — returns CommitReviewResult
-            return self._run_review(message, diff)
-
         if diff is None:
             diff = self._capture_diff()
 
@@ -542,199 +329,6 @@ class CommitAuditor:
 
         # Tool-enabled path: LLM wants to explore before judging
         return self._tool_loop(message, diff)
-
-    # ── Review mode (GR-065: CodeRabbit-style) ──────────────────
-
-    def review(
-        self,
-        message: str,
-        diff: str | None = None,
-    ) -> "CommitReviewResult":
-        """Run a CodeRabbit-style commit review."""
-        if diff is None:
-            diff = self._capture_diff()
-        if not diff.strip():
-            return CommitReviewResult(valid=True, summary="No changes to review.")
-
-        # Build review prompt
-        active_checks = [k for k, v in self.review_checks.items() if v]
-        checks_str = ", ".join(active_checks)
-
-        severity_map = {
-            "critical-only": "Only report critical and high severity issues. Skip medium, low, and info.",
-            "standard": "Report critical, high, and medium severity issues. Skip low and info.",
-            "all": "Report all issues regardless of severity.",
-        }
-        severity_instr = severity_map.get(self.review_severity, severity_map["standard"])
-
-        fix_instr = (
-            "Include specific, actionable fix suggestions for every issue."
-            if self.review_suggest_fix
-            else "Do NOT include fix suggestions — just identify issues."
-        )
-
-        review_prompt = REVIEW_USER_PROMPT.format(
-            message=message,
-            diff=diff[:15000],
-            checks=checks_str,
-            severity=severity_instr,
-            fix=fix_instr,
-        )
-
-        if self.review_mode == "agent":
-            return self._review_tool_loop(message, diff, review_prompt)
-
-        # Single-call review
-        return self._review_single_call(review_prompt)
-
-    def _review_single_call(self, review_prompt: str) -> "CommitReviewResult":
-        """Single LLM call for code review."""
-        try:
-            response = self.llm.chat(
-                messages=[
-                    {"role": "system", "content": COMMIT_REVIEW_SYSTEM_PROMPT},
-                    {"role": "user", "content": review_prompt},
-                ],
-                temperature=0.1,
-                max_tokens=2048,
-            )
-        except Exception as e:
-            logger.warning("Code review LLM call failed: %s", e)
-            return CommitReviewResult(
-                valid=True,
-                summary=f"Review unavailable: {e}",
-                iterations_used=1,
-            )
-
-        return self._parse_review_result(response, iteration=1)
-
-    def _review_tool_loop(
-        self, message: str, diff: str, review_prompt: str
-    ) -> "CommitReviewResult":
-        """Multi-turn review with tool access."""
-        # Stub for agent mode — reuses existing tool loop pattern
-        messages: list[dict] = [
-            {"role": "system", "content": COMMIT_REVIEW_SYSTEM_PROMPT},
-            {"role": "user", "content": review_prompt},
-        ]
-
-        for iteration in range(1, self.max_iterations + 1):
-            try:
-                response = self.llm.chat(
-                    messages=messages,
-                    tools=COMMIT_AUDIT_TOOLS,
-                    temperature=0.1,
-                    max_tokens=2048,
-                )
-            except Exception as e:
-                return CommitReviewResult(
-                    valid=True,
-                    summary=f"Review error on iteration {iteration}: {e}",
-                    iterations_used=iteration,
-                )
-
-            if not response.tool_calls:
-                if response.content:
-                    return self._parse_review_result(response, iteration=iteration)
-                return CommitReviewResult(
-                    valid=True, summary="No issues found.", iterations_used=iteration
-                )
-
-            assistant_msg = {
-                "role": "assistant",
-                "content": response.content,
-                "tool_calls": [
-                    {
-                        "id": tc.id,
-                        "type": "function",
-                        "function": {"name": tc.name, "arguments": json.dumps(tc.arguments)},
-                    }
-                    for tc in response.tool_calls
-                ],
-            }
-            messages.append(assistant_msg)
-
-            for tc in response.tool_calls:
-                tool_result = self._execute_tool(tc)
-                messages.append({"role": "tool", "tool_call_id": tc.id, "content": tool_result})
-
-        return CommitReviewResult(
-            valid=True,
-            summary=f"Review exhausted {self.max_iterations} iterations without verdict",
-            iterations_used=self.max_iterations,
-        )
-
-    def _parse_review_result(
-        self, response: LLMResponse, iteration: int = 1
-    ) -> "CommitReviewResult":
-        """Parse the structured review JSON from the LLM."""
-        content = (response.content or "").strip()
-        if content.startswith("```"):
-            content = re.sub(r"^```(?:json)?\s*", "", content)
-            content = re.sub(r"\s*```$", "", content)
-
-        try:
-            data = json.loads(content)
-        except json.JSONDecodeError:
-            # Try to extract the first complete JSON object (non-greedy)
-            match = re.search(r"\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}", content)
-            if match:
-                try:
-                    data = json.loads(match.group(0))
-                except json.JSONDecodeError:
-                    return CommitReviewResult(
-                        valid=True,
-                        summary=f"Could not parse review: {content[:200]}",
-                        iterations_used=iteration,
-                    )
-            else:
-                return CommitReviewResult(
-                    valid=True,
-                    summary=f"Could not parse review: {content[:200]}",
-                    iterations_used=iteration,
-                )
-
-        issues = [ReviewIssue.from_dict(i) for i in data.get("issues", [])]
-        overall_score = float(data.get("overall_score", 0.0))
-        if not overall_score and issues:
-            overall_score = max(i.score for i in issues)
-        return CommitReviewResult(
-            valid=data.get("valid", True),
-            summary=data.get("summary", ""),
-            issues=issues,
-            message_valid=data.get("message_valid", True),
-            message_issues=data.get("message_issues", []),
-            suggested_message=data.get("suggested_message", ""),
-            iterations_used=iteration,
-            overall_score=overall_score,
-        )
-
-    def _run_review(self, message: str, diff: str | None = None) -> CommitAuditResult:
-        """Bridge: run review mode and convert to CommitAuditResult for compatibility."""
-        rev = self.review(message, diff)
-        return CommitAuditResult(
-            valid=rev.valid and rev.message_valid,
-            issues=[
-                f"[{i.severity}][{i.category}] {i.file}:{i.line}: {i.title} (score: {i.score:.1f})"
-                for i in rev.issues
-            ],
-            suggested_message=rev.suggested_message,
-            iterations_used=rev.iterations_used,
-            review_issues=[
-                {
-                    "file": i.file,
-                    "line": i.line,
-                    "severity": i.severity,
-                    "category": i.category,
-                    "title": i.title,
-                    "description": i.description,
-                    "suggestion": i.suggestion,
-                    "score": i.score,
-                }
-                for i in rev.issues
-            ],
-            review_summary=rev.summary,
-        )
 
     # ── Fast path: one LLM call ─────────────────────────────────
 
