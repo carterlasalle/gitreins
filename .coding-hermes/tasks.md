@@ -143,11 +143,12 @@ Extract the good parts of `AgenticEvaluator` into `engine/agents/runner.py`:
 - [x] R2-14 gitreins_mcp/server.py: imports PolicyPropagator, _propagate calls propagate_policy(); MCP tool name 'propagate' kept (external API contract) (6aea4fc)
 - [x] R2-14 tests: test_propagate.py (PolicyPropagator + alias-delegation test), test_codeintel.py (no_backend + degraded-[] coverage), test_mcp_server.py (TestPropagateMCP new names) — targeted 117 passed/1 skipped; LSP 0 findings; judge verdict b5f1da04/983d3b49: tier2 COMPLETE 3/3 (fresh test runs: 47+70+8 passed, exit 0), tier1 tests FAIL = pre-existing flaky test_cli.py::test_full_task_lifecycle_subprocess (30s subprocess timeout on `task complete` firing LLM judge — passes under normal load: foreman full suite 1736 passed/8 skipped/0 failed; board-documented flake, unrelated to R2-14), secrets/lint PASS. R2.15 ready.
 
-### R2.15 — Replace CodeRabbit-ish reviewer
-- [ ] R2-15 delete COMMIT_REVIEW_SYSTEM_PROMPT / current commit-review orchestration
-- [ ] R2-15 keep CommitAuditor for actual commit-message auditing
-- [ ] R2-15 code review = its own subsystem (review DAG); commit_audit_review_mode no longer drives review
-- [ ] R2-15 tests: CommitAuditor kept, review DAG independent
+### R2.15 — Replace CodeRabbit-ish reviewer ✅ fcc1aa7 (judge tier2 COMPLETE 4/4, verdict 043adf41)
+- [x] R2-15 delete COMMIT_REVIEW_SYSTEM_PROMPT / current commit-review orchestration (fcc1aa7, 2026-08-09)
+- [x] R2-15 keep CommitAuditor for actual commit-message auditing (fcc1aa7)
+- [x] R2-15 code review = its own subsystem (review DAG); commit_audit_review_mode no longer drives review (fcc1aa7)
+- [x] R2-15 tests: CommitAuditor kept (30 tests), review DAG independent (242 targeted pass; full suite 1673 passed / 3 pre-existing env-artifact failures reproduced on parent 51877e6 — mypy-not-installed + LSP roundtrip)
+> Judge verdict 043adf41: tier2 COMPLETE 4/4 PASS (301 targeted tests run, exit 0; ruff clean); tier1 lint+secrets PASS, tier1 tests FAIL = pre-existing env artifact (mypy missing, LSP) — identical on parent commit. R2.16 ready.
 
 ### R2.16 — Review DAG wiring + `gitreins review` entrypoint
 - [ ] R2-16 wire full review_pipeline (DESIGN §17) into the Pipeline
