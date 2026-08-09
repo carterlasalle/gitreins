@@ -209,13 +209,19 @@ def test_sanitized_env_strips_all_git_vars():
     assert env["HOME"] == "/home/test"
 
 
-def test_sanitized_env_strips_gitreins_max_budget_vars():
-    """GITREINS_MAX_* budget controls must not leak into test subprocesses.
+def test_sanitized_env_strips_budget_and_llm_cred_vars():
+    """GITREINS_MAX_* budget controls + LLM credential vars must not leak.
 
     Proven 2026-08-09 R2-16: a judge run exporting GITREINS_MAX_OUTPUT_TOKENS
     leaked into the tier1 pytest subprocess and broke EvalCap/config-priority
     tests (assert 2000000 == 1000000) — tier1 tests FAIL exit 2 with the env
     set, 61 passed with it stripped. Same class as the GIT_* strip.
+
+    INFRA-LLM-ENV-001 (2026-08-09): LLM credential vars leak into the same
+    subprocesses. OPENROUTER_API_KEY (last in LLMClient's fallback chain) is
+    inherited by the tier1 pytest subprocess and breaks tests/test_llm.py
+    env-priority tests (assert api_key == '' but got the real key) — 1
+    failed with the creds set, 58 passed with them stripped.
     """
     with patch.dict(
         os.environ,
@@ -224,7 +230,12 @@ def test_sanitized_env_strips_gitreins_max_budget_vars():
             "GITREINS_MAX_OUTPUT_TOKENS": "2M",
             "GITREINS_MAX_INPUT_TOKENS": "10M",
             "GITREINS_MAX_TIME": "60m",
-            "GITREINS_LLM_API_KEY": "sk-keep-me",
+            "GITREINS_LLM_API_KEY": "sk-or-v1-primary",
+            "OPENROUTER_API_KEY": "sk-or-v1-test",
+            "OPENAI_API_KEY": "sk-openai",
+            "ANTHROPIC_API_KEY": "sk-ant-test",
+            "DEEPSEEK_API_KEY": "sk-deepseek",
+            "NEURALWATT_API_KEY": "nw-test",
             "PATH": "/usr/bin",
         },
         clear=True,
@@ -234,9 +245,12 @@ def test_sanitized_env_strips_gitreins_max_budget_vars():
     assert "GITREINS_MAX_OUTPUT_TOKENS" not in env
     assert "GITREINS_MAX_INPUT_TOKENS" not in env
     assert "GITREINS_MAX_TIME" not in env
-    # LLM config vars are NOT budget controls — they must survive (the judge
-    # subprocess needs them for its own provider calls).
-    assert env["GITREINS_LLM_API_KEY"] == "sk-keep-me"
+    assert "GITREINS_LLM_API_KEY" not in env
+    assert "OPENROUTER_API_KEY" not in env
+    assert "OPENAI_API_KEY" not in env
+    assert "ANTHROPIC_API_KEY" not in env
+    assert "DEEPSEEK_API_KEY" not in env
+    assert "NEURALWATT_API_KEY" not in env
     assert env["PATH"] == "/usr/bin"
 
 

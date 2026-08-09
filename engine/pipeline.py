@@ -351,11 +351,26 @@ class Pipeline:
             # (same class as DF-008; guards.py got this in 3cad082). Also
             # strip GITREINS_MAX_* budget controls — they leak into the
             # pytest subprocess and break EvalCap/config-priority tests when
-            # a judge run exports caps (proven 2026-08-09 R2-16).
+            # a judge run exports caps (proven 2026-08-09 R2-16). Also strip
+            # LLM credential vars (GITREINS_LLM_* + provider fallback keys):
+            # leaking them into the pytest subprocess breaks tests/test_llm.py
+            # env-priority tests that assert api_key == '' with no keys set
+            # (proven 2026-08-09 INFRA-LLM-ENV-001: tier1 1 failed, 58 passed
+            # with them stripped).
             sanitized_env = {
                 k: v
                 for k, v in os.environ.items()
-                if not k.startswith("GIT_") and not k.startswith("GITREINS_MAX_")
+                if not k.startswith("GIT_")
+                and not k.startswith("GITREINS_MAX_")
+                and not k.startswith("GITREINS_LLM_")
+                and k
+                not in {
+                    "OPENROUTER_API_KEY",
+                    "OPENAI_API_KEY",
+                    "ANTHROPIC_API_KEY",
+                    "DEEPSEEK_API_KEY",
+                    "NEURALWATT_API_KEY",
+                }
             }
             result = subprocess.run(
                 cmd,

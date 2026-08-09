@@ -163,11 +163,14 @@ class TestRunCommand:
         assert output_len <= 4100  # Allow some margin for truncation message
         assert "truncated" in result["output"]
 
-    def test_run_command_strips_gitreins_max_env(self, evaluator, monkeypatch):
-        """run_command must not inherit GITREINS_MAX_* budget vars.
+    def test_run_command_strips_budget_and_llm_cred_env(self, evaluator, monkeypatch):
+        """run_command must not inherit GITREINS_MAX_* budget or LLM cred vars.
 
         Proven 2026-08-09 R2-16: judge caps leaked into the pytest subprocess
         and broke EvalCap/config-priority tests (assert 2000000 == 1000000).
+        INFRA-LLM-ENV-001: GITREINS_LLM_* / OPENROUTER_API_KEY leak breaks
+        test_llm.py env-priority tests (api_key == '' asserted, real key
+        found).
         """
         from unittest.mock import patch as _patch
 
@@ -180,12 +183,14 @@ class TestRunCommand:
         monkeypatch.setenv("GITREINS_MAX_OUTPUT_TOKENS", "2M")
         monkeypatch.setenv("GITREINS_MAX_ITERATIONS", "400")
         monkeypatch.setenv("GITREINS_LLM_API_KEY", "sk-keep")
+        monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-v1-test")
         with _patch("engine.evaluator.subprocess.run", side_effect=fake_run):
             result = evaluator._tool_run_command("pytest")
         assert result["exit_code"] == 0
         assert "GITREINS_MAX_OUTPUT_TOKENS" not in captured["env"]
         assert "GITREINS_MAX_ITERATIONS" not in captured["env"]
-        assert captured["env"].get("GITREINS_LLM_API_KEY") == "sk-keep"
+        assert "GITREINS_LLM_API_KEY" not in captured["env"]
+        assert "OPENROUTER_API_KEY" not in captured["env"]
 
 
 class TestSearchPattern:

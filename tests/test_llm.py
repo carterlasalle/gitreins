@@ -130,6 +130,9 @@ class TestAPIKeyResolution:
         monkeypatch.delenv("OPENAI_API_KEY", raising=False)
         monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
         monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
+        monkeypatch.delenv("KIMI_API_KEY", raising=False)
+        monkeypatch.delenv("GROQ_API_KEY", raising=False)
+        monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
         client = LLMClient(base_url="https://test.local/v1")
         assert client.api_key == ""
 

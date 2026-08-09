@@ -22,11 +22,29 @@ def _sanitized_env() -> dict[str, str]:
     pytest subprocess and break EvalCap/config-priority tests that exercise
     env-override paths (proven 2026-08-09 R2-16: tier1 tests FAIL exit 2 with
     GITREINS_MAX_OUTPUT_TOKENS set; 61 passed with it stripped).
+
+    Also strip LLM credential vars — GITREINS_LLM_* plus the provider
+    fallback keys (OPENROUTER/OPENAI/ANTHROPIC/DEEPSEEK/NEURALWATT). A judge
+    run exports them for its own LLMClient calls, and leaking them into test
+    subprocesses breaks env-priority tests in tests/test_llm.py that assert
+    api_key == '' when no keys are set (proven 2026-08-09 INFRA-LLM-ENV-001:
+    OPENROUTER_API_KEY inherited → tier1 1 failed, 58 passed with it
+    stripped).
     """
     return {
         k: v
         for k, v in os.environ.items()
-        if not k.startswith("GIT_") and not k.startswith("GITREINS_MAX_")
+        if not k.startswith("GIT_")
+        and not k.startswith("GITREINS_MAX_")
+        and not k.startswith("GITREINS_LLM_")
+        and k
+        not in {
+            "OPENROUTER_API_KEY",
+            "OPENAI_API_KEY",
+            "ANTHROPIC_API_KEY",
+            "DEEPSEEK_API_KEY",
+            "NEURALWATT_API_KEY",
+        }
     }
 
 

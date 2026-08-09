@@ -393,11 +393,14 @@ class TestVerifierTools:
         assert "cmd" in rc["parameters"].get("required", [])
         assert "shell" in rc["description"].lower() or "command" in rc["description"].lower()
 
-    def test_run_command_tool_strips_gitreins_max_env(self, tmp_workdir, monkeypatch):
-        """The verifier run_command tool must not inherit GITREINS_MAX_*.
+    def test_run_command_tool_strips_budget_and_llm_cred_env(self, tmp_workdir, monkeypatch):
+        """The verifier run_command tool strips budget + LLM credential vars.
 
         Same class as the evaluator leak (2026-08-09 R2-16): judge caps
         exported into subprocess envs break EvalCap/config-priority tests.
+        INFRA-LLM-ENV-001: GITREINS_LLM_* / OPENROUTER_API_KEY leak breaks
+        test_llm.py env-priority tests (api_key == '' asserted, real key
+        found).
         """
         from unittest.mock import patch as _patch
 
@@ -412,6 +415,7 @@ class TestVerifierTools:
         monkeypatch.setenv("GITREINS_MAX_OUTPUT_TOKENS", "2M")
         monkeypatch.setenv("GITREINS_MAX_ITERATIONS", "400")
         monkeypatch.setenv("GITREINS_LLM_API_KEY", "sk-keep")
+        monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-v1-test")
         tool = _make_run_command_tool(tmp_workdir)
         assert tool.fn is not None
         with _patch("engine.review.verifier.subprocess.run", side_effect=fake_run):
@@ -419,7 +423,8 @@ class TestVerifierTools:
         assert result["exit_code"] == 0
         assert "GITREINS_MAX_OUTPUT_TOKENS" not in captured["env"]
         assert "GITREINS_MAX_ITERATIONS" not in captured["env"]
-        assert captured["env"].get("GITREINS_LLM_API_KEY") == "sk-keep"
+        assert "GITREINS_LLM_API_KEY" not in captured["env"]
+        assert "OPENROUTER_API_KEY" not in captured["env"]
 
     def test_sandbox_tools_auto_injected(self, tmp_workdir):
         names = self.tool_names(tmp_workdir)

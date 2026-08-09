@@ -399,13 +399,16 @@ class TestExtendedPipeline:
         # t1 not in pre-eval, so it should be skipped
         assert "t1" not in result["stages"]
 
-    def test_script_step_strips_gitreins_max_env(self, tmp_workdir, monkeypatch):
-        """Tier1 script steps must not inherit GITREINS_MAX_* budget vars.
+    def test_script_step_strips_budget_and_llm_cred_env(self, tmp_workdir, monkeypatch):
+        """Tier1 script steps must not inherit budget or LLM credential vars.
 
         Proven 2026-08-09 R2-16: GITREINS_MAX_* exported for a judge run
         leaked into the tier1 pytest subprocess and broke EvalCap /
         config-priority tests (assert 2000000 == 1000000). The GIT_* strip
-        must extend to evaluator budget controls. LLM config vars survive.
+        must extend to evaluator budget controls. INFRA-LLM-ENV-001: leaking
+        GITREINS_LLM_* / OPENROUTER_API_KEY into the pytest subprocess
+        breaks test_llm.py env-priority tests (api_key == '' asserted, real
+        key found).
         """
         from unittest.mock import patch as _patch
 
@@ -420,6 +423,7 @@ class TestExtendedPipeline:
         monkeypatch.setenv("GITREINS_MAX_OUTPUT_TOKENS", "2M")
         monkeypatch.setenv("GITREINS_MAX_ITERATIONS", "400")
         monkeypatch.setenv("GITREINS_LLM_API_KEY", "sk-keep")
+        monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-v1-test")
         config = {
             "pipeline": {
                 "stages": [
@@ -438,7 +442,8 @@ class TestExtendedPipeline:
         assert result["stages"]["t1"]["passed"] is True
         assert "GITREINS_MAX_OUTPUT_TOKENS" not in captured["env"]
         assert "GITREINS_MAX_ITERATIONS" not in captured["env"]
-        assert captured["env"].get("GITREINS_LLM_API_KEY") == "sk-keep"
+        assert "GITREINS_LLM_API_KEY" not in captured["env"]
+        assert "OPENROUTER_API_KEY" not in captured["env"]
 
 
 # ── Regression: pipeline fallback when config exists but lacks pipeline key ───

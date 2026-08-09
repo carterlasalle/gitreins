@@ -337,10 +337,24 @@ def _make_run_command_tool(
                 # Strip GIT_* and GITREINS_MAX_* budget controls — evaluator
                 # caps must never leak into pytest subprocesses (breaks
                 # EvalCap/config-priority tests; proven 2026-08-09 R2-16).
+                # Also strip LLM credential vars (GITREINS_LLM_* + provider
+                # fallback keys) — they break tests/test_llm.py env-priority
+                # tests that assert api_key == '' with no keys set
+                # (INFRA-LLM-ENV-001).
                 sanitized_env = {
                     k: v
                     for k, v in os.environ.items()
-                    if not k.startswith("GIT_") and not k.startswith("GITREINS_MAX_")
+                    if not k.startswith("GIT_")
+                    and not k.startswith("GITREINS_MAX_")
+                    and not k.startswith("GITREINS_LLM_")
+                    and k
+                    not in {
+                        "OPENROUTER_API_KEY",
+                        "OPENAI_API_KEY",
+                        "ANTHROPIC_API_KEY",
+                        "DEEPSEEK_API_KEY",
+                        "NEURALWATT_API_KEY",
+                    }
                 }
                 proc = subprocess.run(
                     cmd,
