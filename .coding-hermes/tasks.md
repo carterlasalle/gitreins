@@ -121,10 +121,10 @@ Extract the good parts of `AgenticEvaluator` into `engine/agents/runner.py`:
 - [x] R2-10 engine/github/publisher.py — publish_comments (per-line PR review comments / issue comments, requests fallback, NEVER raises → PublishResult.failed) + checks.py — set_status_check (pending/success/failure/error, ValueError on bad state) + app.py — run_pr_review: PullRequestChangeSource → SAME ReviewOrchestrator.run as local → rank/dedupe → CommentWriter → publish + status check (DAG error→error, crit/high→failure, else success) (e3d2eae)
 - [x] R2-10 tests: 43 hermetic (21 checkout + 22 app) — diff text correctness (--unified=3), ACM filtering, base/head SHAs (HEAD/empty-tree/worktree stash/gh refs), missing-gh + invalid-JSON error paths, publisher never-raises + one-failure-doesn't-block-others, checks state mapping, PR smoke (stubbed orchestrator + StubLLM writer). Full suite 1604 passed/7 skipped (1 pre-existing flaky cli lifecycle, passes in isolation); ruff clean; gitreins guard PASS. Judge verdict 50f00f11: tier1 lint/tests/secrets ALL PASS, tier2 COMPLETE. R2.11 ready.
 
-### R2.11 — PR service-mode sandbox
-- [ ] R2-11 engine/github/sandbox.py — ephemeral container/microVM (clone PR, NO prod credentials, NO host fs, NO docker socket, network default-deny, resource caps)
-- [ ] R2-11 verifier runs inside the sandbox
-- [ ] R2-11 tests: sandbox isolation + verifier-in-sandbox
+### R2.11 — PR service-mode sandbox ✅ df8c452 (judge PASS 089fdf31)
+- [x] R2-11 engine/github/sandbox.py — ephemeral container/microVM (clone PR, NO prod credentials, NO host fs, NO docker socket, network default-deny, resource caps) (df8c452, 2026-08-08)
+- [x] R2-11 verifier runs inside the sandbox (df8c452)
+- [x] R2-11 tests: sandbox isolation + verifier-in-sandbox — 49 hermetic tests (protocol, cmd-building, env-scrub, denied-mounts, unavailable, teardown, clone-pr, verifier-in-sandbox, docker-smoke); judge verdict 089fdf31: tier1 lint/tests/secrets ALL PASS, tier2 COMPLETE 3/3
 
 ### R2.12 — Intent system (consume GitReins tasks)
 - [ ] R2-12 engine/task_manager.py — consume existing tasks as intent context (do NOT auto-create)
