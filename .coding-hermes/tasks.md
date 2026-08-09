@@ -126,10 +126,10 @@ Extract the good parts of `AgenticEvaluator` into `engine/agents/runner.py`:
 - [x] R2-11 verifier runs inside the sandbox (df8c452)
 - [x] R2-11 tests: sandbox isolation + verifier-in-sandbox — 49 hermetic tests (protocol, cmd-building, env-scrub, denied-mounts, unavailable, teardown, clone-pr, verifier-in-sandbox, docker-smoke); judge verdict 089fdf31: tier1 lint/tests/secrets ALL PASS, tier2 COMPLETE 3/3
 
-### R2.12 — Intent system (consume GitReins tasks)
-- [ ] R2-12 engine/task_manager.py — consume existing tasks as intent context (do NOT auto-create)
-- [ ] R2-12 feed task criteria into Lane A (requirements) alongside Lane B
-- [ ] R2-12 tests: task-consume + intent/defect context merge
+### R2.12 — Intent system (consume GitReins tasks) ✅ 43af82e (judge PASS 661e954c)
+- [x] R2-12 engine/task_manager.py — consume existing tasks as intent context (do NOT auto-create): `TaskManager.intent_context(statuses=None)` read-only projection {id,title,criteria,status} + `intent_prompt()` + module-level `intent_to_prompt()` render block "Task intent (developer criteria)" (43af82e, 2026-08-08)
+- [x] R2-12 feed task criteria into Lane A (requirements) alongside Lane B: pipeline `_run_review_agent` builds intent block from task criteria (explicit `task.intent_context` wins), ReviewAgent.run(intent_context=...) renders it BEFORE the evidence store; ReviewOrchestrator.run/run_from_plan/_run_one thread it to every reviewer (43af82e)
+- [x] R2-12 tests: task-consume + intent/defect context merge — 23 new tests (7 task_manager consume/read-only, 8 reviewer prompt-merge, 4 orchestrator threading, 4 pipeline); targeted 120 passed, ruff clean, LSP 0 findings; judge verdict 661e954c: tier1 lint/tests/secrets ALL PASS, tier2 COMPLETE 3/3. R2.13 ready.
 
 ### R2.13 — Rich review history + provenance + ReviewLearning
 - [ ] R2-13 review_runs/<sha>/ artifacts (manifest, change, static-evidence, scout, candidates, verification, final-findings, requirements, usage)
