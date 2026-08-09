@@ -116,12 +116,10 @@ Extract the good parts of `AgenticEvaluator` into `engine/agents/runner.py`:
 > ruff clean. Judge verdict 8b8b7b2e: tier1 lint/tests/secrets ALL PASS (first
 > clean tier1 since lint_command fix 073ae19), tier2 COMPLETE 4/4. R2.10 ready.
 
-### R2.10 — ChangeSource abstraction (local + GitHub PR)
-- [ ] R2-10 engine/github/checkout.py + ChangeSource Protocol (diff/changed_files/base_sha/head_sha)
-- [ ] R2-10 WorkingTreeChangeSource, PullRequestChangeSource, CommitRangeChangeSource
-- [ ] R2-10 same reviewer runs locally (pre-commit) and on GitHub PR
-- [ ] R2-10 engine/github/app.py, publisher.py, checks.py (PR review surface)
-- [ ] R2-10 tests: ChangeSource implementations + PR review smoke
+### R2.10 — ChangeSource abstraction (local + GitHub PR) ✅ e3d2eae (judge PASS 50f00f11)
+- [x] R2-10 engine/github/checkout.py — ChangeSource Protocol (diff/changed_files/base_sha/head_sha, runtime-checkable) + Diff dataclass + WorkingTreeChangeSource / CommitRangeChangeSource / PullRequestChangeSource (gh CLI subprocess, NO new deps, ChangeSourceError on missing gh/bad JSON) (e3d2eae, 2026-08-08)
+- [x] R2-10 engine/github/publisher.py — publish_comments (per-line PR review comments / issue comments, requests fallback, NEVER raises → PublishResult.failed) + checks.py — set_status_check (pending/success/failure/error, ValueError on bad state) + app.py — run_pr_review: PullRequestChangeSource → SAME ReviewOrchestrator.run as local → rank/dedupe → CommentWriter → publish + status check (DAG error→error, crit/high→failure, else success) (e3d2eae)
+- [x] R2-10 tests: 43 hermetic (21 checkout + 22 app) — diff text correctness (--unified=3), ACM filtering, base/head SHAs (HEAD/empty-tree/worktree stash/gh refs), missing-gh + invalid-JSON error paths, publisher never-raises + one-failure-doesn't-block-others, checks state mapping, PR smoke (stubbed orchestrator + StubLLM writer). Full suite 1604 passed/7 skipped (1 pre-existing flaky cli lifecycle, passes in isolation); ruff clean; gitreins guard PASS. Judge verdict 50f00f11: tier1 lint/tests/secrets ALL PASS, tier2 COMPLETE. R2.11 ready.
 
 ### R2.11 — PR service-mode sandbox
 - [ ] R2-11 engine/github/sandbox.py — ephemeral container/microVM (clone PR, NO prod credentials, NO host fs, NO docker socket, network default-deny, resource caps)
