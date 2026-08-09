@@ -48,6 +48,8 @@ hivemind-audit.md
 # GitReins nested runtime artifacts
 .gitreins/.gitreins/
 .gitreins/config.yaml.bak
+# Review-run archives (DESIGN_v2.md §13 — derived artifacts, rebuildable per run)
+review_runs/
 
 # Hilo — local cache files (rebuildable; edges.jsonl/manifest churn per scan)
 .vfs/

@@ -55,21 +55,13 @@ class ReviewFinding:
     (``static:semgrep:17``) — never "assertions from nowhere" (§6).
     """
 
-    claim: str = field(
-        metadata={"description": "What is wrong: the defect and why it matters."}
-    )
+    claim: str = field(metadata={"description": "What is wrong: the defect and why it matters."})
     severity: str = field(
-        metadata={
-            "description": (
-                "Severity of the defect: critical, high, medium, low, or info."
-            )
-        }
+        metadata={"description": ("Severity of the defect: critical, high, medium, low, or info.")}
     )
     file: str = field(
         default="",
-        metadata={
-            "description": "Path of the file the finding refers to, relative to repo root."
-        },
+        metadata={"description": "Path of the file the finding refers to, relative to repo root."},
     )
     line: int | None = field(
         default=None,
@@ -87,14 +79,30 @@ class ReviewFinding:
         default="",
         metadata={
             "description": (
-                "Finding category within this review lane, e.g. null-deref, race, "
-                "authz-missing."
+                "Finding category within this review lane, e.g. null-deref, race, authz-missing."
             )
         },
     )
     suggestion: str = field(
         default="",
         metadata={"description": "Optional concrete fix suggestion."},
+    )
+    generated_by: dict = field(
+        default_factory=dict,
+        metadata={
+            "description": (
+                "Provenance: which reviewer produced this finding, "
+                "{role, model} (DESIGN_v2.md §13)."
+            )
+        },
+    )
+    verified_by: dict = field(
+        default_factory=dict,
+        metadata={
+            "description": (
+                "Provenance: which verifier confirmed it, {model, verdict} (DESIGN_v2.md §13)."
+            )
+        },
     )
 
     def to_dict(self) -> dict:
@@ -107,6 +115,8 @@ class ReviewFinding:
             "evidence": list(self.evidence),
             "category": self.category,
             "suggestion": self.suggestion,
+            "generated_by": dict(self.generated_by),
+            "verified_by": dict(self.verified_by),
         }
 
 
@@ -125,11 +135,7 @@ class ReviewFindings:
     )
     summary: str = field(
         default="",
-        metadata={
-            "description": (
-                "One-paragraph summary of this lane's review verdict."
-            )
-        },
+        metadata={"description": ("One-paragraph summary of this lane's review verdict.")},
     )
 
 
@@ -241,9 +247,7 @@ class ReviewAgent(AgentRunner):
             if intent_block:
                 parts.append(intent_block)
         evidence_text = serialize_evidence(store)
-        parts.append(
-            "Evidence store:\n" + (evidence_text or "(empty — review the diff directly)")
-        )
+        parts.append("Evidence store:\n" + (evidence_text or "(empty — review the diff directly)"))
         parts.append("Produce your structured findings now.")
 
         return super().run(

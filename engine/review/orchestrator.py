@@ -31,6 +31,7 @@ from engine.evidence.models import Evidence
 from engine.evidence.store import EvidenceStore
 from engine.router import ModelRouter
 from engine.review.context_builder import EvidencePlanner
+from engine.review.history import ReviewRunArchiver
 from engine.review.scout import ScoutAgent, ScoutPlan
 from engine.review.reviewers import (
     DEFAULT_REVIEWER_ROLES,
@@ -114,6 +115,10 @@ class ReviewOrchestrator:
             injection); otherwise reviewers are constructed per role.
         default_limit: Per-request retrieval cap for the evidence planner.
         scout_budget / reviewer_budget: Optional per-phase Budgets.
+        archiver: Optional ReviewRunArchiver for §13 rich review history;
+            None → a default archiver is created with the repo root as its
+            base dir, so every completed run is persisted under
+            ``review_runs/<commit-sha>/`` (archiving never raises).
     """
 
     def __init__(
@@ -127,6 +132,7 @@ class ReviewOrchestrator:
         default_limit: int = 3,
         scout_budget: Budget | None = None,
         reviewer_budget: Budget | None = None,
+        archiver: ReviewRunArchiver | None = None,
     ):
         self.workdir = os.path.abspath(workdir)
         self.config = config or {}
@@ -136,6 +142,9 @@ class ReviewOrchestrator:
         self._agents: dict[str, ReviewAgent] = dict(agents or {})
         self._scout_budget = scout_budget
         self._reviewer_budget = reviewer_budget
+        self._archiver = (
+            archiver if archiver is not None else ReviewRunArchiver(base_dir=self.workdir)
+        )
 
     # ── Entry points ──────────────────────────────────────────────
 
@@ -169,9 +178,7 @@ class ReviewOrchestrator:
         )
 
         if self.provider is not None:
-            planner = EvidencePlanner(
-                self.provider, store, default_limit=self.default_limit
-            )
+            planner = EvidencePlanner(self.provider, store, default_limit=self.default_limit)
             planner.execute(plan)
 
         return self.run_from_plan(
@@ -235,9 +242,98 @@ class ReviewOrchestrator:
         findings: list[ReviewFinding] = []
         for res in per_agent.values():
             findings.extend(res.findings)
-        return ReviewResult(findings=findings, per_agent=per_agent, evidence_store=store)
+        result = ReviewResult(findings=findings, per_agent=per_agent, evidence_store=store)
+        self._stamp_generated_by(result)
+        self._archive_run(plan, store, changed_files, diff_context, result, intent_context)
+        return result
 
     # ── Internals ─────────────────────────────────────────────────
+
+    def _stamp_generated_by(self, result: ReviewResult) -> None:
+        """Attach §13 ``generated_by`` {role, model} provenance to every finding.
+
+        The lane that produced a finding is known at merge time (per_agent),
+        so provenance is stamped here. The model name is resolved best-effort
+        from a real ModelRouter; duck-typed test routers are never queried
+        (they record for_role calls) and their stub clients carry no model
+        name, so provenance degrades to an empty model — it never breaks the
+        DAG.
+        """
+        for role, res in result.per_agent.items():
+            model = self._model_for_role(role)
+            for finding in res.findings:
+                if isinstance(finding, ReviewFinding):
+                    finding.generated_by = {"role": role, "model": model}
+
+    def _model_for_role(self, role: str) -> str:
+        """Best-effort model name for provenance; '' when unavailable."""
+        if not isinstance(self.router, ModelRouter):
+            return ""
+        try:
+            client = self.router.for_role(role)
+            return str(getattr(client, "model", "") or "")
+        except Exception:  # noqa: BLE001 — provenance must never break the DAG
+            return ""
+
+    def _archive_run(
+        self,
+        plan: ScoutPlan,
+        store: EvidenceStore,
+        changed_files: list[str] | None,
+        diff_context: str,
+        result: ReviewResult,
+        intent_context: str | list[dict] | None,
+    ) -> None:
+        """Persist the completed run under ``review_runs/<sha>/`` (§13).
+
+        Archives every stage that has data: change, scout, candidates,
+        final findings (with provenance), requirements, usage, and the
+        manifest. Static-evidence is archived when the store carries
+        static-analysis/LSP evidence; verification is not part of the
+        orchestrator's DAG (it is wired upstream, R2.16). Archiving is
+        best-effort — a failure is logged and never breaks the review.
+        """
+        try:
+            self._archiver.archive_all(
+                change={
+                    "changed_files": list(changed_files or []),
+                    "diff_context": diff_context or "",
+                },
+                static_evidence=self._static_evidence(store),
+                scout=plan,
+                candidates=result.findings,
+                final_findings=result.findings,
+                requirements=self._requirements(store, intent_context),
+                usage={
+                    "roles": list(result.per_agent.keys()),
+                    "findings_per_agent": {
+                        r: len(res.findings) for r, res in result.per_agent.items()
+                    },
+                    "total_findings": len(result.findings),
+                    "evidence_count": len(store.all()),
+                    "errors": result.errors,
+                    "all_ok": result.all_ok,
+                },
+                manifest={"workdir": self.workdir},
+            )
+        except Exception as exc:  # noqa: BLE001 — archive is best-effort; never break the DAG
+            logger.warning("Review-run archiving failed: %s", exc)
+
+    def _static_evidence(self, store: EvidenceStore) -> list[Evidence] | None:
+        """Static-analysis/LSP evidence for static-evidence.json; None when empty."""
+        items = list(store.query(kind="static_analysis")) + list(store.query(kind="lsp"))
+        return items or None
+
+    def _requirements(
+        self,
+        store: EvidenceStore,
+        intent_context: str | list[dict] | None,
+    ) -> list[dict] | None:
+        """Requirement evidence + structured intent for requirements.json."""
+        reqs: list[dict] = [e.to_dict() for e in store.query(kind="requirement")]
+        if isinstance(intent_context, list):
+            reqs.extend(dict(r) for r in intent_context if isinstance(r, dict))
+        return reqs or None
 
     def _run_one(
         self,
@@ -257,9 +353,7 @@ class ReviewOrchestrator:
                 diff_context=diff_context,
                 lenses=lenses,
                 intent_context=intent_context,
-                budget=self._reviewer_budget
-                if self._reviewer_budget is not None
-                else Budget(),
+                budget=self._reviewer_budget if self._reviewer_budget is not None else Budget(),
             )
             items = findings.findings if isinstance(findings, ReviewFindings) else []
             return ReviewerResult(role=role, findings=list(items))

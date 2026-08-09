@@ -19,6 +19,8 @@ rank + dedup stages (ranker.py / dedup.py) and the batched comment writer
 
 from engine.review.context_builder import EvidencePlanner
 from engine.review.dedup import dedupe_findings
+from engine.review.history import ARTIFACT_NAMES, ReviewRunArchiver
+from engine.review.learning import ReviewLearning, ReviewRule
 from engine.review.orchestrator import (
     DEFAULT_REVIEWER_ROLES,
     ReviewOrchestrator,
@@ -75,4 +77,8 @@ __all__ = [
     "CommentWriter",
     "Comment",
     "CommentBatch",
+    "ReviewRunArchiver",
+    "ARTIFACT_NAMES",
+    "ReviewLearning",
+    "ReviewRule",
 ]
