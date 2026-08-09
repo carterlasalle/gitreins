@@ -290,3 +290,75 @@ class TestFullRun:
         )
         with pytest.raises(BudgetExceededError):
             orch.run(["a.py"])
+
+
+# ── (c) R2.12: intent-context threading (DESIGN_v2.md §10) ─────────────────
+
+
+class TestIntentThreading:
+    """intent_context reaches every reviewer's user prompt via both entries."""
+
+    INTENT = (
+        "Task intent (developer criteria):\n"
+        "- [github-842] (in_progress) Allow promotional orders with zero-dollar total\n"
+        "    - zero-dollar promotional orders are accepted"
+    )
+
+    def test_run_from_plan_threads_intent_to_all_reviewers(self, tmp_workdir):
+        router = RoleMapRouter(reviewer_clients())
+        orch = ReviewOrchestrator(router=router, workdir=tmp_workdir)
+        orch.run_from_plan(make_plan(), make_store(), intent_context=self.INTENT)
+        # Every lane's captured user prompt carries the intent block.
+        for role in DEFAULT_REVIEWER_ROLES:
+            user_prompt = router.clients[role].messages_seen[0][1]["content"]
+            assert "Task intent (developer criteria):" in user_prompt
+            assert "github-842" in user_prompt
+            assert "zero-dollar promotional orders are accepted" in user_prompt
+            # …and the defect context (evidence store) is still there.
+            assert "Evidence store:" in user_prompt
+            assert "E1" in user_prompt
+
+    def test_run_threads_intent_through_full_dag(self, tmp_workdir):
+        clients = {"scout": StubLLM([LLMResponse(content=PLAN_JSON)])}
+        clients.update(reviewer_clients())
+        router = RoleMapRouter(clients)
+        orch = ReviewOrchestrator(router=router, workdir=tmp_workdir)
+        orch.run(
+            ["auth/session.py"],
+            "rotated refresh tokens",
+            intent_context=self.INTENT,
+        )
+        user_prompt = router.clients["runtime_reviewer"].messages_seen[0][1]["content"]
+        assert "Task intent (developer criteria):" in user_prompt
+        assert "github-842" in user_prompt
+        assert "zero-dollar promotional orders are accepted" in user_prompt
+        assert "E1" in user_prompt  # diff evidence still present
+
+    def test_structured_intent_dicts_threaded(self, tmp_workdir):
+        router = RoleMapRouter(reviewer_clients())
+        orch = ReviewOrchestrator(router=router, workdir=tmp_workdir)
+        orch.run_from_plan(
+            make_plan(),
+            make_store(),
+            intent_context=[
+                {
+                    "id": "login-endpoint",
+                    "title": "Implement POST /login endpoint",
+                    "criteria": ["Returns JWT token on success"],
+                    "status": "in_progress",
+                },
+            ],
+        )
+        user_prompt = router.clients["security_reviewer"].messages_seen[0][1]["content"]
+        assert "Task intent (developer criteria):" in user_prompt
+        assert "login-endpoint" in user_prompt
+        assert "Returns JWT token on success" in user_prompt
+
+    def test_no_intent_context_no_section(self, tmp_workdir):
+        """Without intent_context the prompt has no intent section."""
+        router = RoleMapRouter(reviewer_clients())
+        orch = ReviewOrchestrator(router=router, workdir=tmp_workdir)
+        orch.run_from_plan(make_plan(), make_store())
+        user_prompt = router.clients["runtime_reviewer"].messages_seen[0][1]["content"]
+        assert "Task intent" not in user_prompt
+        assert "Evidence store:" in user_prompt

@@ -40,6 +40,24 @@ class Task:
     depends_on: list[str] = field(default_factory=list)  # task IDs that must complete first
 
 
+def intent_to_prompt(tasks: list[dict]) -> str:
+    """Render task-intent dicts (from ``TaskManager.intent_context``) as a
+    compact 'Task intent (developer criteria)' prompt block (DESIGN_v2.md §10).
+
+    Each task renders as ``- [id] (status) title`` followed by its criteria as
+    indented bullets. An empty input yields an empty string so callers can omit
+    the section entirely.
+    """
+    if not tasks:
+        return ""
+    lines = ["Task intent (developer criteria):"]
+    for t in tasks:
+        lines.append(f"- [{t.get('id', '')}] ({t.get('status', '')}) {t.get('title', '')}")
+        for c in t.get("criteria") or []:
+            lines.append(f"    - {c}")
+    return "\n".join(lines)
+
+
 class TaskManager:
     """Manage tasks stored in .gitreins/tasks.yaml."""
 
@@ -49,6 +67,40 @@ class TaskManager:
         self._tasks_file = os.path.join(self._config_dir, "tasks.yaml")
         self._tasks: dict[str, Task] = {}
         self._load()
+
+    # ── Intent-context consumption (DESIGN_v2.md §10) ────────────────
+
+    def intent_context(self, statuses: list[str] | None = None) -> list[dict]:
+        """Read-only intent-context projection of EXISTING tasks (§10).
+
+        Returns a list of ``{id, title, criteria, status}`` dicts for the
+        tasks already present in ``.gitreins/tasks.yaml``, optionally
+        filtered by ``statuses``. This is a pure consumer API: it never
+        creates tasks and never writes to ``tasks.yaml`` — intent is context
+        the review consumes, not something v2.0 auto-creates.
+        """
+        tasks = self.all_tasks()
+        if statuses:
+            status_set = set(statuses)
+            tasks = [t for t in tasks if t.status in status_set]
+        return [
+            {
+                "id": t.id,
+                "title": t.title,
+                "criteria": list(t.criteria),
+                "status": t.status,
+            }
+            for t in tasks
+        ]
+
+    def intent_prompt(self, statuses: list[str] | None = None) -> str:
+        """Render existing tasks as a compact 'Task intent' prompt block.
+
+        Read-only convenience: ``intent_to_prompt(self.intent_context(statuses))``.
+        Returns an empty string when no tasks match, so callers can omit the
+        section entirely.
+        """
+        return intent_to_prompt(self.intent_context(statuses))
 
     def _load(self) -> None:
         """Load tasks from YAML file."""

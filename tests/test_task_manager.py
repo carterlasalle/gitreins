@@ -7,7 +7,7 @@ import os
 import pytest
 from datetime import datetime
 
-from engine.task_manager import Task, TaskManager
+from engine.task_manager import Task, TaskManager, intent_to_prompt
 
 
 # ── Phase 1-1: Task CRUD Operations and Edge Cases ──────────────────────────
@@ -342,3 +342,153 @@ class TestTaskManagerExtendedEdgeCases:
         lst2 = task_manager.all_tasks()
         assert lst1 is not lst2  # different list objects
         assert len(lst1) == len(lst2) == 1
+
+
+# ── R2.12: Intent-context consumption (DESIGN_v2.md §10) ────────────────────
+
+
+class TestTaskIntentContext:
+    """Read-only intent-context API — consumes existing tasks, never writes."""
+
+    def _write_fixture(self, workdir, tasks):
+        """Write a tasks.yaml fixture (same style as TaskManager._save)."""
+        import yaml
+
+        config_dir = os.path.join(workdir, ".gitreins")
+        os.makedirs(config_dir, exist_ok=True)
+        with open(os.path.join(config_dir, "tasks.yaml"), "w") as f:
+            yaml.dump(
+                {"tasks": tasks}, f, default_flow_style=False, sort_keys=False
+            )
+
+    def test_intent_context_returns_expected_dicts(self, tmp_workdir):
+        """intent_context() projects existing tasks as {id,title,criteria,status}."""
+        self._write_fixture(
+            str(tmp_workdir),
+            [
+                {
+                    "id": "login-endpoint",
+                    "title": "Implement POST /login endpoint",
+                    "criteria": [
+                        "Accepts email+password as JSON body",
+                        "Returns JWT token on success",
+                    ],
+                    "status": "in_progress",
+                },
+                {
+                    "id": "logout",
+                    "title": "Implement POST /logout",
+                    "criteria": ["Invalidates session"],
+                    "status": "pending",
+                },
+            ],
+        )
+        tm = TaskManager(str(tmp_workdir))
+        assert tm.intent_context() == [
+            {
+                "id": "login-endpoint",
+                "title": "Implement POST /login endpoint",
+                "criteria": [
+                    "Accepts email+password as JSON body",
+                    "Returns JWT token on success",
+                ],
+                "status": "in_progress",
+            },
+            {
+                "id": "logout",
+                "title": "Implement POST /logout",
+                "criteria": ["Invalidates session"],
+                "status": "pending",
+            },
+        ]
+
+    def test_intent_context_status_filter(self, tmp_workdir):
+        """intent_context(statuses=[...]) keeps only matching statuses."""
+        self._write_fixture(
+            str(tmp_workdir),
+            [
+                {"id": "a", "title": "A", "criteria": [], "status": "pending"},
+                {"id": "b", "title": "B", "criteria": [], "status": "in_progress"},
+                {"id": "c", "title": "C", "criteria": [], "status": "complete"},
+            ],
+        )
+        tm = TaskManager(str(tmp_workdir))
+        assert [t["id"] for t in tm.intent_context(statuses=["in_progress"])] == ["b"]
+        assert [t["id"] for t in tm.intent_context(statuses=["pending", "complete"])] == [
+            "a",
+            "c",
+        ]
+        assert tm.intent_context(statuses=["complete"])[0]["status"] == "complete"
+
+    def test_intent_prompt_renders_id_title_criteria(self, tmp_workdir):
+        """intent_prompt() renders a block containing id, title, criteria."""
+        self._write_fixture(
+            str(tmp_workdir),
+            [
+                {
+                    "id": "login-endpoint",
+                    "title": "Implement POST /login endpoint",
+                    "criteria": [
+                        "Accepts email+password as JSON body",
+                        "Returns 401 on invalid credentials",
+                    ],
+                    "status": "in_progress",
+                },
+            ],
+        )
+        prompt = TaskManager(str(tmp_workdir)).intent_prompt()
+        assert "Task intent (developer criteria):" in prompt
+        assert "login-endpoint" in prompt
+        assert "in_progress" in prompt
+        assert "Implement POST /login endpoint" in prompt
+        assert "Accepts email+password as JSON body" in prompt
+        assert "Returns 401 on invalid credentials" in prompt
+
+    def test_intent_context_read_only_no_file_write(self, tmp_workdir):
+        """intent_context()/intent_prompt() never write to tasks.yaml."""
+        self._write_fixture(
+            str(tmp_workdir),
+            [
+                {
+                    "id": "login-endpoint",
+                    "title": "Login",
+                    "criteria": ["Accepts email"],
+                    "status": "pending",
+                },
+            ],
+        )
+        path = os.path.join(str(tmp_workdir), ".gitreins", "tasks.yaml")
+        before_content = open(path).read()
+        before_mtime = os.path.getmtime(path)
+
+        tm = TaskManager(str(tmp_workdir))
+        assert tm.intent_context()[0]["id"] == "login-endpoint"
+        assert "Accepts email" in tm.intent_prompt()
+
+        assert open(path).read() == before_content  # no content drift
+        assert os.path.getmtime(path) == before_mtime  # no rewrite
+
+    def test_intent_context_missing_tasks_file(self, tmp_path):
+        """No tasks.yaml → empty intent, and no .gitreins dir is created."""
+        workdir = str(tmp_path / "bare")
+        os.makedirs(workdir, exist_ok=True)
+        tm = TaskManager(workdir)
+        assert tm.intent_context() == []
+        assert tm.intent_prompt() == ""
+        assert not os.path.exists(os.path.join(workdir, ".gitreins"))
+
+    def test_intent_to_prompt_empty(self):
+        """intent_to_prompt([]) → empty string (callers omit the section)."""
+        assert intent_to_prompt([]) == ""
+
+    def test_intent_to_prompt_multi_task(self):
+        """Multiple tasks render as separate bullet entries with criteria."""
+        prompt = intent_to_prompt(
+            [
+                {"id": "a", "title": "A", "criteria": ["c1"], "status": "pending"},
+                {"id": "b", "title": "B", "criteria": ["c2", "c3"], "status": "complete"},
+            ]
+        )
+        assert "- [a] (pending) A" in prompt
+        assert "- [b] (complete) B" in prompt
+        assert prompt.index("c1") < prompt.index("- [b]") < prompt.index("c2")

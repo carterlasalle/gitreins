@@ -313,3 +313,74 @@ class TestSequentialReviewAgentStage:
         assert stage["steps"][0]["type"] == "review_agent"
         assert stage["steps"][0]["data"]["role"] == "runtime_reviewer"
         assert router.roles == ["runtime_reviewer"]
+
+
+# ── (d) R2.12: task criteria/intent into Lane B prompts ────────────────────
+
+
+class TestReviewAgentIntentContext:
+    """_run_review_agent builds an intent block from the task dict (§10)."""
+
+    def test_task_criteria_built_into_intent_block(self, tmp_workdir):
+        """task['criteria'] reaches every reviewer as an intent section."""
+        router = review_router()
+        p = Pipeline(review_config(), tmp_workdir, router=router)
+        task = make_task()
+        task["criteria"] = [
+            "zero-dollar promotional orders are accepted",
+            "Stripe is not contacted for free orders",
+        ]
+        p.run(task, trigger="pre-eval")
+        for role in DEFAULT_REVIEWER_ROLES:
+            user_prompt = router.clients[role].messages_seen[0][1]["content"]
+            assert "Task intent (developer criteria):" in user_prompt
+            assert "review-task" in user_prompt  # task id rendered
+            assert "zero-dollar promotional orders are accepted" in user_prompt
+            assert "Stripe is not contacted for free orders" in user_prompt
+            # Defect context still present alongside intent.
+            assert "Evidence store:" in user_prompt
+
+    def test_explicit_intent_context_wins_over_criteria(self, tmp_workdir):
+        """task['intent_context'] takes precedence over raw criteria."""
+        router = review_router()
+        p = Pipeline(review_config(), tmp_workdir, router=router)
+        task = make_task()
+        task["criteria"] = ["ignored criteria string"]
+        task["intent_context"] = (
+            "Task intent (developer criteria):\n"
+            "- [github-842] (in_progress) Allow promotional orders\n"
+            "    - zero-dollar promotional orders are accepted"
+        )
+        p.run(task, trigger="pre-eval")
+        user_prompt = router.clients["runtime_reviewer"].messages_seen[0][1]["content"]
+        assert "github-842" in user_prompt
+        assert "zero-dollar promotional orders are accepted" in user_prompt
+        assert "ignored criteria string" not in user_prompt
+
+    def test_structured_intent_context_list_rendered(self, tmp_workdir):
+        """task['intent_context'] as {id,title,criteria,status} dicts renders."""
+        router = review_router()
+        p = Pipeline(review_config(), tmp_workdir, router=router)
+        task = make_task()
+        task["intent_context"] = [
+            {
+                "id": "github-842",
+                "title": "Allow promotional orders with zero-dollar total",
+                "criteria": ["Stripe is not contacted for free orders"],
+                "status": "in_progress",
+            },
+        ]
+        p.run(task, trigger="pre-eval")
+        user_prompt = router.clients["security_reviewer"].messages_seen[0][1]["content"]
+        assert "Task intent (developer criteria):" in user_prompt
+        assert "github-842" in user_prompt
+        assert "Stripe is not contacted for free orders" in user_prompt
+
+    def test_no_criteria_no_intent_section(self, tmp_workdir):
+        """A task without criteria/intent gets no intent section (Lane A only)."""
+        router = review_router()
+        p = Pipeline(review_config(), tmp_workdir, router=router)
+        p.run(make_task(), trigger="pre-eval")  # make_task() has criteria: []
+        user_prompt = router.clients["runtime_reviewer"].messages_seen[0][1]["content"]
+        assert "Task intent" not in user_prompt
+        assert "Evidence store:" in user_prompt

@@ -146,13 +146,17 @@ class ReviewOrchestrator:
         *,
         evidence_store: EvidenceStore | None = None,
         roles: list[str] | None = None,
+        intent_context: str | list[dict] | None = None,
     ) -> ReviewResult:
         """Full DAG: diff evidence → scout → retrieval → parallel reviewers.
 
         Appends one ``diff`` Evidence per changed file, classifies the change
         with ScoutAgent, executes the resulting retrieval plan through the
         EvidencePlanner when a ``provider`` is configured, then runs the
-        reviewers in parallel over the shared store.
+        reviewers in parallel over the shared store. ``intent_context`` (a
+        rendered 'Task intent (developer criteria)' block or a list of
+        ``{id, title, criteria, status}`` dicts, DESIGN_v2.md §10) is threaded
+        to every reviewer.
         """
         store = evidence_store if evidence_store is not None else EvidenceStore()
         self._append_diff_evidence(store, changed_files, diff_context)
@@ -176,6 +180,7 @@ class ReviewOrchestrator:
             changed_files=changed_files,
             diff_context=diff_context,
             roles=roles,
+            intent_context=intent_context,
         )
 
     def run_from_plan(
@@ -186,14 +191,17 @@ class ReviewOrchestrator:
         changed_files: list[str] | None = None,
         diff_context: str = "",
         roles: list[str] | None = None,
+        intent_context: str | list[dict] | None = None,
     ) -> ReviewResult:
         """Run the parallel reviewers over an existing pipeline output.
 
         ``plan`` and ``evidence_store`` are the ScoutAgent/EvidencePlanner
         pipeline output (DESIGN_v2.md §7): the store already holds the
         evidence packet, and the plan's ``review_lenses`` are passed to each
-        reviewer as context. A failing lane degrades to a per-agent error —
-        the DAG never raises.
+        reviewer as context. ``intent_context`` (rendered block or
+        ``{id, title, criteria, status}`` dicts, §10) is threaded to every
+        reviewer. A failing lane degrades to a per-agent error — the DAG
+        never raises.
         """
         store = evidence_store if evidence_store is not None else EvidenceStore()
         role_list = list(roles) if roles else list(DEFAULT_REVIEWER_ROLES)
@@ -203,7 +211,13 @@ class ReviewOrchestrator:
         with concurrent.futures.ThreadPoolExecutor(max_workers=len(role_list)) as executor:
             futures = {
                 executor.submit(
-                    self._run_one, role, store, changed_files, diff_context, lenses
+                    self._run_one,
+                    role,
+                    store,
+                    changed_files,
+                    diff_context,
+                    lenses,
+                    intent_context,
                 ): role
                 for role in role_list
             }
@@ -232,6 +246,7 @@ class ReviewOrchestrator:
         changed_files: list[str] | None,
         diff_context: str,
         lenses: list[str],
+        intent_context: str | list[dict] | None = None,
     ) -> ReviewerResult:
         """Run one reviewer lane; never raises (errors become the result)."""
         try:
@@ -241,6 +256,7 @@ class ReviewOrchestrator:
                 changed_files=changed_files,
                 diff_context=diff_context,
                 lenses=lenses,
+                intent_context=intent_context,
                 budget=self._reviewer_budget
                 if self._reviewer_budget is not None
                 else Budget(),

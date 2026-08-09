@@ -336,3 +336,74 @@ class TestRouterIntegration:
         with patch.object(client, "chat", return_value=LLMResponse(content=FINDINGS_JSON)):
             result = reviewer.run(make_store())
         assert result.findings[0].severity == "high"
+
+
+# ── (d) R2.12: Intent-context merge (DESIGN_v2.md §10) ─────────────────────
+
+
+class TestReviewerIntentContext:
+    """intent_context is rendered into the user prompt BEFORE the evidence store."""
+
+    INTENT = (
+        "Task intent (developer criteria):\n"
+        "- [github-842] (in_progress) Allow promotional orders with zero-dollar total\n"
+        "    - zero-dollar promotional orders are accepted\n"
+        "    - Stripe is not contacted for free orders"
+    )
+
+    @pytest.mark.parametrize("cls,_,__", REVIEWER_CLASSES)
+    def test_user_prompt_contains_intent_and_evidence(self, cls, _, __, tmp_workdir):
+        """The criteria AND the evidence store both reach the prompt."""
+        stub = StubLLM([content_response(FINDINGS_JSON)])
+        reviewer = cls(router=FakeRouter(stub), workdir=tmp_workdir)
+        reviewer.run(make_store(), intent_context=self.INTENT)
+        user_prompt = stub.messages_seen[0][1]["content"]
+        assert "Task intent (developer criteria):" in user_prompt
+        assert "github-842" in user_prompt
+        assert "zero-dollar promotional orders are accepted" in user_prompt
+        assert "Stripe is not contacted for free orders" in user_prompt
+        # The evidence store is still serialized alongside the intent.
+        assert "Evidence store:" in user_prompt
+        assert "E1" in user_prompt
+        assert "auth/session.py:41-45" in user_prompt
+
+    @pytest.mark.parametrize("cls,_,__", REVIEWER_CLASSES)
+    def test_intent_section_precedes_evidence_store(self, cls, _, __, tmp_workdir):
+        """Intent context renders BEFORE the evidence store section."""
+        stub = StubLLM([content_response(FINDINGS_JSON)])
+        reviewer = cls(router=FakeRouter(stub), workdir=tmp_workdir)
+        reviewer.run(make_store(), intent_context=self.INTENT)
+        user_prompt = stub.messages_seen[0][1]["content"]
+        assert user_prompt.index("Task intent (developer criteria):") < user_prompt.index(
+            "Evidence store:"
+        )
+
+    def test_structured_intent_dicts_rendered(self, tmp_workdir):
+        """A list of {id, title, criteria, status} dicts is rendered inline."""
+        stub = StubLLM([content_response(FINDINGS_JSON)])
+        reviewer = RuntimeReviewer(router=FakeRouter(stub), workdir=tmp_workdir)
+        reviewer.run(
+            make_store(),
+            intent_context=[
+                {
+                    "id": "login-endpoint",
+                    "title": "Implement POST /login endpoint",
+                    "criteria": ["Returns JWT token on success"],
+                    "status": "in_progress",
+                },
+            ],
+        )
+        user_prompt = stub.messages_seen[0][1]["content"]
+        assert "Task intent (developer criteria):" in user_prompt
+        assert "login-endpoint" in user_prompt
+        assert "Returns JWT token on success" in user_prompt
+        assert "E1" in user_prompt  # evidence still present
+
+    def test_no_intent_context_no_section(self, tmp_workdir):
+        """Default run() has no intent section — backward compatible."""
+        stub = StubLLM([content_response(FINDINGS_JSON)])
+        reviewer = RuntimeReviewer(router=FakeRouter(stub), workdir=tmp_workdir)
+        reviewer.run(make_store())
+        user_prompt = stub.messages_seen[0][1]["content"]
+        assert "Task intent" not in user_prompt
+        assert "Evidence store:" in user_prompt

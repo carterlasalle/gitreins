@@ -198,6 +198,7 @@ class ReviewAgent(AgentRunner):
         changed_files: list[str] | None = None,
         diff_context: str = "",
         lenses: list[str] | None = None,
+        intent_context: str | list[dict] | None = None,
         budget: Budget | None = None,
     ) -> ReviewFindings:
         """Review the evidence store for defects in this lane.
@@ -208,6 +209,13 @@ class ReviewAgent(AgentRunner):
             changed_files: Files changed by the diff (for context).
             diff_context: Raw diff text (for context).
             lenses: Review lenses the scout selected (DESIGN_v2.md §7), if any.
+            intent_context: Task intent context (DESIGN_v2.md §10) — either a
+                pre-rendered 'Task intent (developer criteria)' text block or
+                a list of ``{id, title, criteria, status}`` dicts (as returned
+                by ``TaskManager.intent_context``). Rendered into the user
+                prompt as its own section BEFORE the evidence store, so the
+                reviewer sees what the developer tried to do alongside what
+                they accidentally broke. None → no intent section.
             budget: Agent Budget; defaults to an unlimited Budget.
 
         Returns:
@@ -223,6 +231,15 @@ class ReviewAgent(AgentRunner):
         if lenses:
             lens_lines = "\n".join(f"- {lens}" for lens in lenses)
             parts.append(f"Review lenses selected by the scout:\n{lens_lines}")
+        if intent_context:
+            if isinstance(intent_context, str):
+                intent_block = intent_context
+            else:
+                from engine.task_manager import intent_to_prompt
+
+                intent_block = intent_to_prompt(intent_context)
+            if intent_block:
+                parts.append(intent_block)
         evidence_text = serialize_evidence(store)
         parts.append(
             "Evidence store:\n" + (evidence_text or "(empty — review the diff directly)")

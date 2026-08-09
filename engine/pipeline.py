@@ -700,6 +700,27 @@ class Pipeline:
             diff_context = task.get("diff") or task.get("diff_context") or ""
             lenses = task.get("review_lenses")
 
+            # Task intent (DESIGN_v2.md §10) — feed developer criteria into
+            # Lane B. An explicit intent_context wins; otherwise wrap the
+            # task's own criteria into a single intent block. Both forms may
+            # be a rendered string or {id, title, criteria, status} dicts.
+            intent_context: str | list[dict] | None = task.get("intent_context")
+            if not intent_context:
+                criteria = task.get("criteria")
+                if criteria:
+                    from engine.task_manager import intent_to_prompt
+
+                    intent_context = intent_to_prompt(
+                        [
+                            {
+                                "id": task.get("id", ""),
+                                "title": task.get("title", ""),
+                                "criteria": list(criteria),
+                                "status": task.get("status", ""),
+                            }
+                        ]
+                    )
+
             step_budget_cfg = step_def.get("budget") or {}
             budget = Budget.from_config(self.config)
             if step_budget_cfg:
@@ -712,6 +733,7 @@ class Pipeline:
                 changed_files=changed_files,
                 diff_context=diff_context,
                 lenses=lenses,
+                intent_context=intent_context,
                 budget=budget,
             )
             items = list(findings.findings) if findings is not None else []
