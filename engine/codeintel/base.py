@@ -113,6 +113,14 @@ class CodeIntelProvider(Protocol):
         limit: int = 10,
     ) -> list[dict]: ...
 
+    def get_cross_repo_impact(
+        self,
+        query: str,
+        file_path: str | None = None,
+        symbol: str | None = None,
+        limit: int = 10,
+    ) -> list[dict]: ...
+
 
 class CodeIntelUnavailableError(RuntimeError):
     """Raised at *construction* when a provider's backend is not installed.

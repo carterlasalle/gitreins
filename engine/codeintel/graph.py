@@ -72,3 +72,8 @@ class GraphProvider:
 
     def cross_repo(self, query, file_path=None, symbol=None, limit=10) -> list[dict]:
         return [NO_BACKEND]
+
+    def get_cross_repo_impact(self, query, file_path=None, symbol=None, limit=10) -> list[dict]:
+        # Graph-backend-only query — the interface exists, the backend is
+        # not wired yet. Same documented no-backend marker as cross_repo.
+        return [NO_BACKEND]

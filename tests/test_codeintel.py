@@ -300,9 +300,34 @@ def test_graph_provider_returns_documented_empty(tmp_path):
         "history",
         "prs",
         "cross_repo",
+        "get_cross_repo_impact",
     ]:
         result = getattr(provider, method)("anything")
         assert result and result[0].get("status") == "no_backend"
+
+
+# ── get_cross_repo_impact (R2.14) ────────────────────────────────────────
+
+
+def test_degraded_providers_return_empty_cross_repo_impact(tmp_path, monkeypatch):
+    """astgrep/ripgrep/lsp/serena cannot answer cross-repo graph queries.
+
+    Only the graph provider can (eventually) resolve cross-repo impact;
+    the others degrade to ``[]`` like their ``cross_repo`` methods.
+    """
+    write_fixture(tmp_path)
+    monkeypatch.setattr("engine.codeintel.lsp.find_lsp_tool", lambda tool: None)
+
+    astgrep = AstGrepProvider(workdir=str(tmp_path))
+    ripgrep = RipgrepProvider(workdir=str(tmp_path))
+    lsp = LspProvider(workdir=str(tmp_path), tool="pylsp")
+    serena = SerenaProvider.__new__(SerenaProvider)  # bypass binary check
+
+    for provider in (astgrep, ripgrep, lsp, serena):
+        assert provider.get_cross_repo_impact("greet") == []
+        assert provider.get_cross_repo_impact(
+            "greet", file_path="fixture.py", symbol="greet", limit=5
+        ) == []
 
 
 # ── serena provider ─────────────────────────────────────────────────────

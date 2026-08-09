@@ -1586,11 +1586,11 @@ class TestPropagateMCP:
 
     def test_propagate_creates_config_in_empty_target(self, source_with_config):
         """Target has no .gitreins/, propagation creates it with source config."""
-        from engine.propagate import Propagator
+        from engine.propagate import PolicyPropagator
 
         target = _temp_target(source_with_config, "sibling-a")
-        propagator = Propagator(source_with_config)
-        result = propagator.propagate([target])
+        propagator = PolicyPropagator(source_with_config)
+        result = propagator.propagate_policy([target])
 
         assert result["source"] == os.path.abspath(source_with_config)
         assert len(result["results"]) == 1
@@ -1614,7 +1614,7 @@ class TestPropagateMCP:
     def test_propagate_merges_preserving_overrides(self, source_with_config):
         """Target has a config with different test_mode, propagation preserves it."""
         import yaml
-        from engine.propagate import Propagator
+        from engine.propagate import PolicyPropagator
 
         target = _temp_target(source_with_config, "sibling-b")
         # Create target with an override
@@ -1629,8 +1629,8 @@ class TestPropagateMCP:
         with open(os.path.join(gitreins_dir, "config.yaml"), "w") as f:
             yaml.dump(target_config, f, default_flow_style=False, sort_keys=False)
 
-        propagator = Propagator(source_with_config)
-        result = propagator.propagate([target])
+        propagator = PolicyPropagator(source_with_config)
+        result = propagator.propagate_policy([target])
 
         assert len(result["results"]) == 1
         r = result["results"][0]
@@ -1656,12 +1656,12 @@ class TestPropagateMCP:
 
     def test_propagate_returns_results_list(self, source_with_config):
         """Returns ``source`` path and ``results`` array."""
-        from engine.propagate import Propagator
+        from engine.propagate import PolicyPropagator
 
         target_a = _temp_target(source_with_config, "sibling-c")
         target_b = _temp_target(source_with_config, "sibling-d")
-        propagator = Propagator(source_with_config)
-        result = propagator.propagate([target_a, target_b])
+        propagator = PolicyPropagator(source_with_config)
+        result = propagator.propagate_policy([target_a, target_b])
 
         assert "source" in result
         assert result["source"] == os.path.abspath(source_with_config)
@@ -1676,10 +1676,10 @@ class TestPropagateMCP:
 
     def test_propagate_missing_source_returns_error(self, tmp_workdir):
         """Source has no config, returns error."""
-        from engine.propagate import Propagator
+        from engine.propagate import PolicyPropagator
 
-        propagator = Propagator(tmp_workdir)
-        result = propagator.propagate([_temp_target(tmp_workdir, "sibling-e")])
+        propagator = PolicyPropagator(tmp_workdir)
+        result = propagator.propagate_policy([_temp_target(tmp_workdir, "sibling-e")])
 
         assert "error" in result
         assert "No config found" in result["error"]
@@ -1688,15 +1688,15 @@ class TestPropagateMCP:
 
     def test_propagate_nonexistent_target_creates_dir(self, source_with_config):
         """Target path doesn't exist, creates it and copies config."""
-        from engine.propagate import Propagator
+        from engine.propagate import PolicyPropagator
 
         import tempfile
 
         nonexistent = os.path.join(tempfile.mkdtemp(), "new-repo")
         assert not os.path.exists(nonexistent)
 
-        propagator = Propagator(source_with_config)
-        result = propagator.propagate([nonexistent])
+        propagator = PolicyPropagator(source_with_config)
+        result = propagator.propagate_policy([nonexistent])
 
         assert os.path.isdir(nonexistent)
         assert os.path.isdir(os.path.join(nonexistent, ".gitreins"))

@@ -185,3 +185,8 @@ class AstGrepProvider:
 
     def cross_repo(self, query, file_path=None, symbol=None, limit=10) -> list[dict]:
         return []
+
+    def get_cross_repo_impact(self, query, file_path=None, symbol=None, limit=10) -> list[dict]:
+        # Cross-repo impact needs a multi-repo dependency graph — pattern
+        # search is single-tree. Degrade gracefully.
+        return []

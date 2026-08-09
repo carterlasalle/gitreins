@@ -20,7 +20,7 @@ from engine.task_manager import TaskManager
 from engine.judge import Judge, judge_result_to_dict
 from engine.llm import LLMClient
 from engine.guard_manager import GuardManager
-from engine.propagate import Propagator
+from engine.propagate import PolicyPropagator
 from engine.job_store import (
     cap_from_dict,
     cap_to_dict,
@@ -770,11 +770,11 @@ class GitReinsMCPServer:
         return d
 
     def _propagate(self, source: str | None = None, targets: list[str] | None = None) -> dict:
-        """Propagate guard configuration to sibling repos.
+        """Propagate guard-policy configuration to sibling repos.
 
         Args:
             source: Source repo path. Defaults to server workdir.
-            targets: List of target repo paths to propagate config to.
+            targets: List of target repo paths to propagate policy config to.
 
         Returns:
             Dict with ``source`` path and ``results`` list.
@@ -782,8 +782,8 @@ class GitReinsMCPServer:
         if not targets:
             return {"error": "targets list is required"}
         src = os.path.abspath(source) if source else self.workdir
-        propagator = Propagator(src)
-        return propagator.propagate(targets)
+        propagator = PolicyPropagator(src)
+        return propagator.propagate_policy(targets)
 
     def handle_request(self, request: dict) -> dict | None:
         """Handle a single MCP JSON-RPC request."""

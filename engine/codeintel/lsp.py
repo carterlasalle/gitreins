@@ -351,3 +351,7 @@ class LspProvider:
 
     def cross_repo(self, query, file_path=None, symbol=None, limit=10) -> list[dict]:
         return []
+
+    def get_cross_repo_impact(self, query, file_path=None, symbol=None, limit=10) -> list[dict]:
+        # LSP is per-workspace; cross-repo impact needs a multi-repo graph.
+        return []

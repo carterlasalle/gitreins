@@ -167,3 +167,8 @@ class SerenaProvider:
 
     def cross_repo(self, query, file_path=None, symbol=None, limit=10) -> list[dict]:
         return []
+
+    def get_cross_repo_impact(self, query, file_path=None, symbol=None, limit=10) -> list[dict]:
+        # Serena indexes a single project; cross-repo impact needs a
+        # multi-repo graph. Degrade gracefully.
+        return []

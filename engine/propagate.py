@@ -1,7 +1,14 @@
-"""Propagator — copies guard config from the current GitReins repo to sibling repos.
+"""PolicyPropagator — propagates guard-policy config across sibling repos.
 
-All repos in a multi-repo project share the same quality gates.
-Target overrides are always preserved during merge.
+All repos in a multi-repo project share the same quality gates
+(guard-policy configuration in ``.gitreins/config.yaml``). This module
+copies missing policy keys from the current GitReins repo to sibling
+repos; target overrides are always preserved during merge.
+
+R2.14 renamed the concept from generic "propagate" to "propagate policy":
+the operation is specifically about guard-policy configuration, not
+arbitrary data. :class:`Propagator` remains as a backward-compatible
+alias for :class:`PolicyPropagator`.
 """
 
 import logging
@@ -11,12 +18,12 @@ from copy import deepcopy
 logger = logging.getLogger("gitreins.propagate")
 
 
-class Propagator:
-    """Copies .gitreins/config.yaml from source repo to target repos.
+class PolicyPropagator:
+    """Propagates guard-policy config (.gitreins/config.yaml) to target repos.
 
     When a target already has a config, the two are merged:
-    source keys the target doesn't have are added; target's existing keys
-    are preserved (target wins on conflicts).
+    source policy keys the target doesn't have are added; target's
+    existing keys are preserved (target wins on conflicts).
     """
 
     def __init__(self, workdir: str):
@@ -24,8 +31,8 @@ class Propagator:
 
     # ── Public API ──────────────────────────────────────────────
 
-    def propagate(self, target_repos: list[str]) -> dict:
-        """Propagate guard config to sibling repos.
+    def propagate_policy(self, target_repos: list[str]) -> dict:
+        """Propagate guard-policy config to sibling repos.
 
         Args:
             target_repos: List of absolute or relative paths to target repos.
@@ -55,6 +62,16 @@ class Propagator:
             results.append(result)
 
         return {"source": self.workdir, "results": results}
+
+    def propagate(self, target_repos: list[str]) -> dict:
+        """Deprecated alias for :meth:`propagate_policy`.
+
+        Deprecated since R2.14: use :meth:`propagate_policy` — the new
+        name reflects that this propagates guard-policy configuration
+        (``.gitreins/config.yaml``), not arbitrary data. Kept for
+        backward compatibility; will be removed in a future release.
+        """
+        return self.propagate_policy(target_repos)
 
     # ── Config loading ──────────────────────────────────────────
 
@@ -161,7 +178,7 @@ class Propagator:
                 tgt_val = target[key]
                 if isinstance(src_val, dict) and isinstance(tgt_val, dict):
                     # Both are dicts — merge recursively
-                    sub_merged, sub_added, sub_preserved = Propagator._merge_dicts(
+                    sub_merged, sub_added, sub_preserved = PolicyPropagator._merge_dicts(
                         src_val, tgt_val, prefix=full_key
                     )
                     merged[key] = sub_merged
@@ -172,3 +189,9 @@ class Propagator:
                     keys_preserved.append(full_key)
 
         return merged, keys_added, keys_preserved
+
+
+#: Backward-compatible alias for :class:`PolicyPropagator` (R2.14 rename).
+#: New code should use :class:`PolicyPropagator` / ``propagate_policy()``;
+#: the old name still works so existing callers keep functioning.
+Propagator = PolicyPropagator

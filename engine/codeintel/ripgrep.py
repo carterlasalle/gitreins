@@ -158,3 +158,8 @@ class RipgrepProvider:
 
     def cross_repo(self, query, file_path=None, symbol=None, limit=10) -> list[dict]:
         return []
+
+    def get_cross_repo_impact(self, query, file_path=None, symbol=None, limit=10) -> list[dict]:
+        # Lexical recall is single-tree; cross-repo blast radius needs a
+        # multi-repo graph. Degrade gracefully.
+        return []
