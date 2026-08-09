@@ -137,10 +137,11 @@ Extract the good parts of `AgenticEvaluator` into `engine/agents/runner.py`:
 - [x] R2-13 engine/review/learning.py — ReviewLearning: developer accept/reject → durable rule {scope: {repo, paths}, rule, source: {type, finding}, confidence, support_count}, JSONL-persisted (.gitreins/review_learning.jsonl), repo+fnmatch path-glob retrieval, thread-safe append, I/O failure never raises (ecc6752)
 - [x] R2-13 tests: 24 hermetic (9 test_review_history: 9 artifacts, clean re-run, failure-never-raises, provenance in final-findings, orchestrator wiring; 15 test_review_learning: accept/reject rules, repo+path scoping, §13 round-trip, support_count, persistence, corrupt-line skip) — StubLLM/zero LLM; full suite 1722 passed/7 skipped/3 deselected (rust-analyzer hang pre-existing at parent); ruff clean; guard PASS; judge verdict 781eef2c: tier1 lint/tests/secrets ALL PASS, tier2 COMPLETE 4/4. R2.14 ready.
 
-### R2.14 — propagate → propagate_policy + cross-repo impact
-- [ ] R2-14 rename conceptual purpose of propagate to propagate_policy
-- [ ] R2-14 add get_cross_repo_impact() via graph provider
-- [ ] R2-14 tests: policy propagate + cross-repo impact
+### R2.14 — propagate → propagate_policy + cross-repo impact ✅ 6aea4fc (judge tier2 COMPLETE 3/3)
+- [x] R2-14 engine/propagate.py: Propagator → PolicyPropagator rename — propagate_policy() + Propagator alias + propagate() deprecated delegating alias; docstrings describe guard-policy propagation (6aea4fc, 2026-08-08)
+- [x] R2-14 engine/codeintel: get_cross_repo_impact() added to CodeIntelProvider Protocol (base.py:116) + all 5 providers — graph returns [NO_BACKEND] marker (graph.py:76), astgrep/ripgrep/lsp/serena degrade to [] (6aea4fc)
+- [x] R2-14 gitreins_mcp/server.py: imports PolicyPropagator, _propagate calls propagate_policy(); MCP tool name 'propagate' kept (external API contract) (6aea4fc)
+- [x] R2-14 tests: test_propagate.py (PolicyPropagator + alias-delegation test), test_codeintel.py (no_backend + degraded-[] coverage), test_mcp_server.py (TestPropagateMCP new names) — targeted 117 passed/1 skipped; LSP 0 findings; judge verdict b5f1da04/983d3b49: tier2 COMPLETE 3/3 (fresh test runs: 47+70+8 passed, exit 0), tier1 tests FAIL = pre-existing flaky test_cli.py::test_full_task_lifecycle_subprocess (30s subprocess timeout on `task complete` firing LLM judge — passes under normal load: foreman full suite 1736 passed/8 skipped/0 failed; board-documented flake, unrelated to R2-14), secrets/lint PASS. R2.15 ready.
 
 ### R2.15 — Replace CodeRabbit-ish reviewer
 - [ ] R2-15 delete COMMIT_REVIEW_SYSTEM_PROMPT / current commit-review orchestration
