@@ -1408,6 +1408,14 @@ Output ONLY the JSON verdict when done — no markdown fences, no extra text."""
         if not cmd:
             return {"error": "No command provided"}
         try:
+            # Strip GIT_* and GITREINS_MAX_* budget controls so evaluator
+            # caps never leak into the pytest subprocess (breaks EvalCap /
+            # config-priority tests; proven 2026-08-09 R2-16).
+            sanitized_env = {
+                k: v
+                for k, v in os.environ.items()
+                if not k.startswith("GIT_") and not k.startswith("GITREINS_MAX_")
+            }
             result = subprocess.run(
                 cmd,
                 shell=True,
@@ -1415,6 +1423,7 @@ Output ONLY the JSON verdict when done — no markdown fences, no extra text."""
                 text=True,
                 timeout=self.command_timeout,
                 cwd=self.workdir,
+                env=sanitized_env,
             )
             output = result.stdout + result.stderr
             if len(output) > 4000:

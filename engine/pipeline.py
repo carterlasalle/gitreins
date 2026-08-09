@@ -348,8 +348,15 @@ class Pipeline:
         try:
             # Strip GIT_* env vars (GIT_INDEX_FILE etc.) leaked by the
             # pre-commit hook — they poison nested git commands in tests
-            # (same class as DF-008; guards.py got this in 3cad082).
-            sanitized_env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
+            # (same class as DF-008; guards.py got this in 3cad082). Also
+            # strip GITREINS_MAX_* budget controls — they leak into the
+            # pytest subprocess and break EvalCap/config-priority tests when
+            # a judge run exports caps (proven 2026-08-09 R2-16).
+            sanitized_env = {
+                k: v
+                for k, v in os.environ.items()
+                if not k.startswith("GIT_") and not k.startswith("GITREINS_MAX_")
+            }
             result = subprocess.run(
                 cmd,
                 shell=True,

@@ -23,8 +23,8 @@ guards:
   lsp_tools:
   - pylsp
 evaluator:
-  max_iterations: 200
-  max_time: 45m
+  max_iterations: 500
+  max_time: 60m
   max_input_tokens: 10M
   max_output_tokens: 1M
   tool_call_weight: 0.1

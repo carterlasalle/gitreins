@@ -17,8 +17,17 @@ def _sanitized_env() -> dict[str, str]:
     resolves against the wrong directory and `git worktree add` fails with
     `fatal: .git/index: index file open failed: Not a directory`. Same
     class as DF-008 (guard_manager.py, c24f29e) — the Go guards missed it.
+    Also strip GITREINS_MAX_* budget controls: when a judge run exports caps
+    (GITREINS_MAX_ITERATIONS/INPUT/OUTPUT/MAX_TIME), they leak into the
+    pytest subprocess and break EvalCap/config-priority tests that exercise
+    env-override paths (proven 2026-08-09 R2-16: tier1 tests FAIL exit 2 with
+    GITREINS_MAX_OUTPUT_TOKENS set; 61 passed with it stripped).
     """
-    return {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
+    return {
+        k: v
+        for k, v in os.environ.items()
+        if not k.startswith("GIT_") and not k.startswith("GITREINS_MAX_")
+    }
 
 
 @dataclass

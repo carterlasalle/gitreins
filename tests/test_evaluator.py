@@ -4,6 +4,7 @@ axiom:trace work_item=GR-001 spec=specs/03-Agentic-Evaluator.md plan=.memory-ban
 """
 
 import os
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -161,6 +162,30 @@ class TestRunCommand:
         output_len = len(result["output"])
         assert output_len <= 4100  # Allow some margin for truncation message
         assert "truncated" in result["output"]
+
+    def test_run_command_strips_gitreins_max_env(self, evaluator, monkeypatch):
+        """run_command must not inherit GITREINS_MAX_* budget vars.
+
+        Proven 2026-08-09 R2-16: judge caps leaked into the pytest subprocess
+        and broke EvalCap/config-priority tests (assert 2000000 == 1000000).
+        """
+        from unittest.mock import patch as _patch
+
+        captured = {}
+
+        def fake_run(cmd, **kwargs):
+            captured["env"] = kwargs.get("env", {})
+            return SimpleNamespace(stdout="ok", stderr="", returncode=0)
+
+        monkeypatch.setenv("GITREINS_MAX_OUTPUT_TOKENS", "2M")
+        monkeypatch.setenv("GITREINS_MAX_ITERATIONS", "400")
+        monkeypatch.setenv("GITREINS_LLM_API_KEY", "sk-keep")
+        with _patch("engine.evaluator.subprocess.run", side_effect=fake_run):
+            result = evaluator._tool_run_command("pytest")
+        assert result["exit_code"] == 0
+        assert "GITREINS_MAX_OUTPUT_TOKENS" not in captured["env"]
+        assert "GITREINS_MAX_ITERATIONS" not in captured["env"]
+        assert captured["env"].get("GITREINS_LLM_API_KEY") == "sk-keep"
 
 
 class TestSearchPattern:

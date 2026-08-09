@@ -334,6 +334,14 @@ def _make_run_command_tool(
                 result = sandbox.run(cmd, cwd=sandbox.cwd, timeout=timeout)
                 exit_code, output = result.exit_code, result.stdout + result.stderr
             else:
+                # Strip GIT_* and GITREINS_MAX_* budget controls — evaluator
+                # caps must never leak into pytest subprocesses (breaks
+                # EvalCap/config-priority tests; proven 2026-08-09 R2-16).
+                sanitized_env = {
+                    k: v
+                    for k, v in os.environ.items()
+                    if not k.startswith("GIT_") and not k.startswith("GITREINS_MAX_")
+                }
                 proc = subprocess.run(
                     cmd,
                     shell=True,
@@ -341,6 +349,7 @@ def _make_run_command_tool(
                     text=True,
                     timeout=timeout,
                     cwd=workdir,
+                    env=sanitized_env,
                 )
                 exit_code, output = proc.returncode, proc.stdout + proc.stderr
         except subprocess.TimeoutExpired:

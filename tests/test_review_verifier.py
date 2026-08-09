@@ -17,6 +17,7 @@ tests/test_review_reviewers.py) — no network, no real model, no tool
 execution.
 """
 
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -391,6 +392,34 @@ class TestVerifierTools:
         assert "cmd" in rc["parameters"]["properties"]
         assert "cmd" in rc["parameters"].get("required", [])
         assert "shell" in rc["description"].lower() or "command" in rc["description"].lower()
+
+    def test_run_command_tool_strips_gitreins_max_env(self, tmp_workdir, monkeypatch):
+        """The verifier run_command tool must not inherit GITREINS_MAX_*.
+
+        Same class as the evaluator leak (2026-08-09 R2-16): judge caps
+        exported into subprocess envs break EvalCap/config-priority tests.
+        """
+        from unittest.mock import patch as _patch
+
+        from engine.review.verifier import _make_run_command_tool
+
+        captured = {}
+
+        def fake_run(cmd, **kwargs):
+            captured["env"] = kwargs.get("env", {})
+            return SimpleNamespace(stdout="ok", stderr="", returncode=0)
+
+        monkeypatch.setenv("GITREINS_MAX_OUTPUT_TOKENS", "2M")
+        monkeypatch.setenv("GITREINS_MAX_ITERATIONS", "400")
+        monkeypatch.setenv("GITREINS_LLM_API_KEY", "sk-keep")
+        tool = _make_run_command_tool(tmp_workdir)
+        assert tool.fn is not None
+        with _patch("engine.review.verifier.subprocess.run", side_effect=fake_run):
+            result = tool.fn("pytest")
+        assert result["exit_code"] == 0
+        assert "GITREINS_MAX_OUTPUT_TOKENS" not in captured["env"]
+        assert "GITREINS_MAX_ITERATIONS" not in captured["env"]
+        assert captured["env"].get("GITREINS_LLM_API_KEY") == "sk-keep"
 
     def test_sandbox_tools_auto_injected(self, tmp_workdir):
         names = self.tool_names(tmp_workdir)

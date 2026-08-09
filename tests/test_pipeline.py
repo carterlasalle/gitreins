@@ -4,6 +4,7 @@ axiom:trace work_item=GR-001 spec=specs/06-Pipeline-Engine.md plan=.memory-bank/
 """
 
 import os
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import yaml
@@ -397,6 +398,47 @@ class TestExtendedPipeline:
         result = p.run({"id": "t1", "title": "x", "criteria": []}, trigger="pre-eval")
         # t1 not in pre-eval, so it should be skipped
         assert "t1" not in result["stages"]
+
+    def test_script_step_strips_gitreins_max_env(self, tmp_workdir, monkeypatch):
+        """Tier1 script steps must not inherit GITREINS_MAX_* budget vars.
+
+        Proven 2026-08-09 R2-16: GITREINS_MAX_* exported for a judge run
+        leaked into the tier1 pytest subprocess and broke EvalCap /
+        config-priority tests (assert 2000000 == 1000000). The GIT_* strip
+        must extend to evaluator budget controls. LLM config vars survive.
+        """
+        from unittest.mock import patch as _patch
+
+        from engine.pipeline import Pipeline
+
+        captured = {}
+
+        def fake_run(cmd, **kwargs):
+            captured["env"] = kwargs.get("env", {})
+            return SimpleNamespace(stdout="ok", stderr="", returncode=0)
+
+        monkeypatch.setenv("GITREINS_MAX_OUTPUT_TOKENS", "2M")
+        monkeypatch.setenv("GITREINS_MAX_ITERATIONS", "400")
+        monkeypatch.setenv("GITREINS_LLM_API_KEY", "sk-keep")
+        config = {
+            "pipeline": {
+                "stages": [
+                    {
+                        "id": "t1",
+                        "parallel": True,
+                        "on": ["pre-eval"],
+                        "steps": [{"id": "x", "type": "script", "run": "pytest"}],
+                    },
+                ],
+            }
+        }
+        with _patch("engine.pipeline.subprocess.run", side_effect=fake_run):
+            p = Pipeline(config, tmp_workdir)
+            result = p.run({"id": "t1", "title": "x", "criteria": []}, trigger="pre-eval")
+        assert result["stages"]["t1"]["passed"] is True
+        assert "GITREINS_MAX_OUTPUT_TOKENS" not in captured["env"]
+        assert "GITREINS_MAX_ITERATIONS" not in captured["env"]
+        assert captured["env"].get("GITREINS_LLM_API_KEY") == "sk-keep"
 
 
 # ── Regression: pipeline fallback when config exists but lacks pipeline key ───
