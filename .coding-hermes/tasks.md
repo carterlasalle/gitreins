@@ -180,22 +180,29 @@ Extract the good parts of `AgenticEvaluator` into `engine/agents/runner.py`:
   seeded repo, PR-mode smoke.
 - CI/CD health, docs gate (README_v2, AGENTS, SECURITY, runbooks, repo description/topics).
 
-### INFRA-LLM-ENV-001 — strip LLM credential vars from judge/guard subprocess envs
-- [ ] INFRA-LLM-ENV-001 guards.py `_sanitized_env` + pipeline.py tier1 script
+### INFRA-LLM-ENV-001 — strip LLM credential vars from judge/guard subprocess envs ✅ 35a34cc + 714d8b5 (judge PASS f4b23cbe)
+- [x] INFRA-LLM-ENV-001 guards.py `_sanitized_env` + pipeline.py tier1 script
   runner + evaluator.py `_tool_run_command` + verifier.py `run_command` all
   exclude GITREINS_LLM_* AND fallback credential keys (OPENROUTER_API_KEY,
   OPENAI_API_KEY, ANTHROPIC_API_KEY, DEEPSEEK_API_KEY, NEURALWATT_API_KEY)
-- [ ] INFRA-LLM-ENV-001 regression test: `tests/test_llm.py` passes with
-  GITREINS_LLM_API_KEY + OPENROUTER_API_KEY set in env (proven repro:
-  test_missing_all_keys_returns_empty asserts '' but gets sk-or-v1-… leak)
-- [ ] INFRA-LLM-ENV-001 targeted suites green; ruff clean; gitreins guard PASS
-> Root cause (proven 2026-08-09): ENVFIX 9c9e8c6 stripped GITREINS_MAX_* from
-> judge subprocess envs but NOT LLM credential vars. Every judge run since R2-3
-> fails tier1 tests mid-suite (~8%, exit 2/-9/-15) because the tier1 pytest
-> subprocess inherits GITREINS_LLM_API_KEY/OPENROUTER_API_KEY and
-> test_llm.py env-priority tests break (clean env: 58 passed; polluted: 1 failed).
-> Tier2's own full-suite run passes (1717 passed) because it runs in clean env —
-> which is why this was mislabeled "judge-subprocess artifact" for 13 phases.
-> The tier2 evaluator process keeps keys in-process (LLMClient reads env at
-> construction); only spawned subprocesses get them stripped — same pattern as
-> ENVFIX. Judge tier1 tests go green after this.
+  (35a34cc inline; 714d8b5 centralized into engine/env_sanitize.py —
+  is_blocked_env_key()/sanitized_env() shared by all 5 sites incl. sibling
+  guard_manager._sanitized_env; block list = GIT_*, GITREINS_MAX_*,
+  GITREINS_LLM_* + 7 fallback keys incl. KIMI/GROQ mirroring LLMClient chain)
+- [x] INFRA-LLM-ENV-001 regression test: `tests/test_llm.py` passes with
+  GITREINS_LLM_API_KEY + OPENROUTER_API_KEY set in env (test_env_sanitize.py
+  test_polluted_env_pytest_llm_goes_green pins the repro — 58 passed under
+  pollution; test_llm.py missing-keys test also hardened with KIMI/GROQ/
+  OPENROUTER delenv)
+- [x] INFRA-LLM-ENV-001 targeted suites green; ruff clean; gitreins guard PASS
+  (judge verified under polluted env: 311 targeted + 58 test_llm passed,
+  guard PASS with GITREINS_LLM_API_KEY/OPENROUTER_API_KEY exported)
+> Judge verdict f4b23cbe (2026-08-09): tier1 PASS — FIRST clean tier1 since
+> this env leak was root-caused (the 13-phase "judge-subprocess artifact"
+> mislabel is resolved); tier2 COMPLETE 3/3. Full suite 1726 passed /
+> 8 skipped, 1 pre-existing flake (test_cli lifecycle, passes in isolation).
+> Root cause (proven 2026-08-09): ENVFIX 9c9e8c6 stripped GITREINS_MAX_* but
+> NOT LLM credential vars → tier1 pytest subprocess inherited
+> GITREINS_LLM_API_KEY/OPENROUTER_API_KEY → test_llm.py env-priority tests
+> broke (1 failed, 58 passed clean). Fix now centralized in env_sanitize.py —
+> the block list can never drift again. R2.x phase build COMPLETE.
