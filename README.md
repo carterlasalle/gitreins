@@ -1,17 +1,17 @@
 # GitReins
 
-**Git-Native Agent Co-Harness — static guards + agentic evaluator for AI-assisted code**
+**Git-Native Agent Co-Harness — static guards, agentic evaluator, and an evidence-driven AI review DAG for LLM-assisted coding**
 
-[![CI](https://github.com/totalwindupflightsystems/gitreins/actions/workflows/ci.yml/badge.svg)](https://github.com/totalwindupflightsystems/gitreins/actions/workflows/ci.yml)
+[![CI](https://github.com/carterlasalle/gitreins/actions/workflows/ci.yml/badge.svg)](https://github.com/carterlasalle/gitreins/actions/workflows/ci.yml)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue)](https://www.python.org/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![PyPI](https://img.shields.io/pypi/v/gitreins)](https://pypi.org/project/gitreins/)
 
-![GitReins Banner](https://raw.githubusercontent.com/totalwindupflightsystems/gitreins/main/assets/banner-dark.jpg)
+![GitReins Banner](https://raw.githubusercontent.com/carterlasalle/gitreins/main/assets/banner-dark.jpg)
 
-GitReins lives inside your git repository as a quality harness. It provides MCP tools for task lifecycle management, an agentic evaluator that judges code completeness against task definitions, and git hooks that ensure nothing bypasses the quality gates.
+GitReins lives inside your git repository as a quality harness. It provides MCP tools for task lifecycle management, an agentic evaluator that judges code completeness against task definitions, an evidence-driven review DAG (`gitreins review`) for defect discovery and PR review, and git hooks that ensure nothing bypasses the quality gates.
 
-> ✅ **v0.11.0** — LSP diagnostics (14 languages), static analysis (9 tools), commit audit with CVE-scored severity, optional Antares CVE-localization guard, Anthropic Messages API support, DeepSeek prompt caching telemetry, large-repo hardening (fast-track + `--skip-tier2`), MCP `propagate`, 1247 tests pass.
+> ✅ **v0.11.0** — LSP diagnostics (14 languages), static analysis (9 tools), commit audit with CVE-scored severity, optional Antares CVE-localization guard, Anthropic Messages API support, DeepSeek prompt caching telemetry, large-repo hardening (fast-track + `--skip-tier2`), MCP `propagate`, and the v2 review ensemble (two AI lanes: criteria evaluation + review DAG, R2.1–R2.16). ~1700 tests pass.
 
 ---
 
@@ -60,6 +60,9 @@ gitreins task list [--status pending|in_progress|complete]
 gitreins task delete <id>
 gitreins judge <id>                   # Evaluate a task
 gitreins commit <message>             # Commit with guard checks
+gitreins review [--pr <n> | --base <ref> --head <ref>] [--criteria ...]
+                                       # Run the §17 review DAG against the working
+                                       # tree, a commit range, or a pull request
 gitreins mcp-server                   # Run MCP stdio server (for AI agents)
 ```
 
@@ -346,10 +349,10 @@ history:
 
 - **Language:** Python 3.10+
 - **Dependencies:** mcp, pyyaml, requests, packaging (4 packages)
-- **MCP Transport:** stdio (26 tools)
+- **MCP Transport:** stdio (12 tools)
 - **Config:** YAML in `.gitreins/` directory
 - **Evaluator Default Model:** DeepSeek V4 Flash (~$0.01/eval)
-- **Test suite:** ~1247 tests across 32 test files (parallelized with pytest-xdist)
+- **Test suite:** ~1700 tests across 50 test files (parallelized with pytest-xdist)
 
 ## Architecture & Docs
 
@@ -358,6 +361,7 @@ history:
 | [Full Architecture](docs/architecture.md) | System design and data flow |
 | [Component Map](docs/component-map.md) | Module inventory with paths and line counts |
 | [Agentic Evaluator Design](docs/evaluator-loop.md) | How the evaluator loop works |
+| [v2 Architecture Runbook](docs/architecture-v2.md) | The v2 review ensemble **as built** (R2.1–R2.16) |
 | [GitReins 2.0 Design](DESIGN_v2.md) | Evidence-driven cheap-model review ensemble (v2) |
 
 ---
@@ -375,9 +379,10 @@ lifecycle, MCP, verdicts) is unchanged; the review brain is new. See
 | | Lane A — Requirements | Lane B — Defect discovery |
 |---|---|---|
 | Question | Did they implement the stated criteria? | Did the patch break something? |
-| Engine | `CriteriaEvaluator` (was `AgenticEvaluator`) | New review DAG (scout → evidence → reviewers → verifier) |
+| Engine | `CriteriaEvaluator` (was `AgenticEvaluator`) | Review DAG (scout → reviewers → verifier → ranker) |
+| Entry point | `gitreins task complete <id>` | `gitreins review` (local / `--base --head` / `--pr <n>`) |
 
-### New modules (R2.1–R2.6)
+### New modules (R2.1–R2.16)
 
 | Module | What it does | R2 |
 |---|---|---|
@@ -387,16 +392,56 @@ lifecycle, MCP, verdicts) is unchanged; the review brain is new. See
 | `engine/evidence/` | First-class `Evidence` type + store + provenance; analyzers become evidence producers | R2.4 |
 | `engine/analyzers/` | `semgrep`/`ast-grep`/`trivy`/`gitleaks` → `Evidence` | R2.4 |
 | `engine/codeintel/` | `CodeIntelProvider` Protocol + `astgrep`/`ripgrep`/`lsp`/`graph`/`serena` providers | R2.5 |
-| `engine/review/scout.py` | Cheap Qwen scout → retrieval plan (symbols, requests, lenses) | R2.6 |
-| `engine/review/context_builder.py` | Deterministic evidence planner executes the scout's retrieval requests | R2.6 |
+| `engine/review/scout.py`, `context_builder.py` | Cheap scout → retrieval plan; deterministic evidence planner executes it | R2.6 |
+| `engine/review/orchestrator.py`, `reviewers.py` | `ReviewOrchestrator` drives the DAG; runtime/contract/security reviewers | R2.7 |
+| `engine/review/verifier.py` | Adversarial verifier ("disprove F\<n\>") + deterministic `BLOCK` policy | R2.8 |
+| `engine/review/ranker.py`, `dedup.py`, `writer.py` | Deterministic usefulness ranking, evidence-overlap dedup, batched comment writer | R2.9 |
+| `engine/github/checkout.py` | `ChangeSource` Protocol + `WorkingTree`/`CommitRange`/`PullRequest` sources | R2.10 |
+| `engine/github/publisher.py`, `checks.py`, `app.py` | PR comments, status checks, `run_pr_review` glue | R2.10 |
+| `engine/github/sandbox.py` | PR sandbox — ephemeral container, default-deny network, credential scrub, resource caps | R2.11 |
+| `engine/task_manager.py` | Intent system — existing tasks consumed as read-only intent context for both lanes | R2.12 |
+| `engine/review/history.py`, `learning.py` | `ReviewRunArchiver` (per-SHA artifacts + provenance) + `ReviewLearning` (feedback → durable rules) | R2.13 |
+| `engine/propagate.py` | `PolicyPropagator.propagate_policy()` + cross-repo impact via `get_cross_repo_impact()` | R2.14 |
+| `engine/commit_audit.py` | CodeRabbit-replacement: commit-review strip (R2.15); keeps commit-message audit only | R2.15 |
+| `gitreins/cli.py` | `gitreins review` CLI + full §17 review DAG wired into the Pipeline | R2.16 |
 
-### Review pipeline (in progress, R2.7+)
+### The review DAG (R2.16 — complete)
 
 ```
-change_analysis → static_evidence (parallel analyzers) → scout → evidence_retrieval
-  → reviewers (runtime/contract/security, parallel) → candidate_merge
-  → verify_findings (adversarial) → rank → criteria_eval (Lane A) → publish
+change_analysis
+  → static_evidence (parallel analyzers: lsp / semgrep / typecheck / secrets / dependencies)
+  → scout (cheap model → retrieval plan)
+  → evidence_retrieval (deterministic execution of the plan)
+  → reviewers (runtime / contract / security — parallel AgentRunner roles)
+  → candidate_merge (dedup by evidence overlap)
+  → verify_findings (adversarial per finding; runs inside the PR sandbox for --pr)
+  → rank (deterministic: severity → confidence → execution path → developer relevance)
+  → criteria_eval (Lane A, when the task or --criteria has criteria)
+  → publish (PR comments + status checks for --pr; no-op locally)
 ```
+
+### What shipped in R2.7–R2.16
+
+- **Review DAG** — `ReviewOrchestrator` drives scout → retrieval → parallel
+  reviewers → dedup → adversarial verify → rank; `review_agent` pipeline stage
+  type with per-role routing.
+- **`gitreins review`** — run the DAG against the working tree (default), a
+  commit range (`--base`/`--head`), or a GitHub PR (`--pr <n>`);
+  `--criteria` adds Lane A; one combined report, exit code 0 on clean machinery.
+- **PR sandbox** — ephemeral container (docker CLI, no new deps): network
+  default-deny, credential scrub, resource caps, `--rm` teardown; the verifier
+  runs inside it in PR mode.
+- **Intent system** — GitReins tasks are consumed (not auto-created) as
+  read-only intent context; criteria feed both Lane A and Lane B prompts.
+- **Rich history + learning** — per-SHA review artifacts archived under
+  `review_runs/<sha>/`; findings carry `generated_by`/`verified_by` provenance;
+  `ReviewLearning` turns developer accept/reject into durable JSONL rules
+  (`.gitreins/review_learning.jsonl`).
+- **`propagate_policy()`** — `Propagator` → `PolicyPropagator` rename with
+  backward-compatible aliases; `get_cross_repo_impact()` on every code-intel
+  provider.
+- **CodeRabbit-replacement** — the old commit-review loop is gone from
+  `CommitAuditor` (R2.15); code review is its own subsystem — the review DAG.
 
 ### Key behavior changes on `v2`
 
@@ -411,10 +456,11 @@ change_analysis → static_evidence (parallel analyzers) → scout → evidence_
 
 ### v2 build progress
 
-Completed through **R2.6** (ModelRouter, AgentRunner, CriteriaEvaluator, Evidence,
-Code Intelligence, Scout + planner). R2.7+ (reviewers, verifier, ranker, writer,
-ChangeSource, sandbox, intent, history, review DAG wiring) in progress on branch
-`v2`. Tracked on the board at `.coding-hermes/tasks.md`.
+All of **R2.1–R2.16** is built and committed on branch `v2`; R2.1–R2.15 carry
+passing judge verdicts (see the progress table in
+[docs/architecture-v2.md](docs/architecture-v2.md)), and R2.16's final judge run
+follows this documentation pass. Tracked on the board at
+`.coding-hermes/tasks.md`.
 
 ## License
 
