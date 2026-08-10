@@ -17,6 +17,15 @@
 > Phases in dependency order. Read DESIGN_v2.md before each. Each phase: implement →
 > tests → `gitreins guard` → commit → push → `gitreins task complete`.
 
+### PITFALL-AGENT-EMPTY — AgentRunner bounded retry on empty LLM responses ✅ 7d65ba6 (judge PASS 38ca0b03)
+- [x] PITFALL-AGENT-EMPTY runner.py: bounded retry with corrective re-prompt — `max_empty_retries=3` default (runner.py:85), counter :181, blank detection `content and content.strip()` :253-254, raises AgentRunError only when budget spent :280-281, corrective user re-prompt :282-293, counter reset on non-empty :256/:301 (7d65ba6, 2026-08-09)
+- [x] PITFALL-AGENT-EMPTY regression tests: test_run_empty_response_retries_then_succeeds (:787, stub.calls==2 + nudge asserted), test_run_empty_response_raises_after_retries (:759, calls==max+1==4, len(nudges)==3), blank-whitespace retry (:811), counter-reset-on-tool-calls (:832) — 46 passed in 1.88s (7d65ba6)
+- [x] PITFALL-AGENT-EMPTY judge verdict 38ca0b03: tier1 lint/tests/secrets ALL PASS, tier2 COMPLETE 3/3 (2026-08-10); gitreins guard PASS (test mode: diff, full suite safety trigger); push verified (origin/v2 == HEAD)
+
+### DUCKBRAIN-001 — create gitreins namespace + sync project knowledge ✅ (judge PASS fb70006d, 2026-08-10)
+- [x] DUCKBRAIN-001 namespace `gitreins` created (list_namespaces confirms) + 3 project entries written AND verified retrievable (list_keys + recall): `/projects/gitreins/architecture-v2` (ModelRouter R2.1, AgentRunner R2.2, review DAG R2.7–R2.16), `/projects/gitreins/env-sanitize-blocklist` (INFRA-LLM-ENV-001, engine/env_sanitize.py single source, 5 sites, GIT_*/GITREINS_MAX_*/GITREINS_LLM_* + 7 fallback keys), `/projects/gitreins/judge-caps` (evaluator caps, env overrides, guard config).
+- [x] DUCKBRAIN-001 judge verdict fb70006d: tier1 lint/tests/secrets ALL PASS, tier2 COMPLETE 3/3 — verified live against DuckBrain backend (REST /api/namespaces + /api/memories, MCP list_keys/recall).
+
 ### R2.1 — ModelRouter (per-role model routing) ✅ b0420b9
 - [x] R2-1 engine/router.py ModelRouter.for_role(role) + review.models.<role> config + env fallback + Pipeline/Judge wiring (b0420b9, 2026-08-08)
 - [x] R2-1 tests: 11 tests (per-role, fallback, caching, pipeline integration) — 96 router/pipeline/judge + 117 evaluator tests pass
