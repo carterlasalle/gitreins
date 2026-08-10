@@ -756,7 +756,13 @@ class TestRunnerTypedResult:
                 budget=Budget(),
             )
 
-    def test_run_empty_response_raises(self, tmp_workdir):
+    def test_run_empty_response_raises_after_retries(self, tmp_workdir):
+        """Persistently empty responses raise only after the retry budget is spent.
+
+        An empty response is not a transport error (engine/llm.py retries those),
+        so the runner nudges the model up to ``max_empty_retries`` times before
+        giving up — exactly 1 initial call + N corrective retries, then raise.
+        """
         stub = StubLLM([LLMResponse(content=None, tool_calls=[])])
         runner = AgentRunner(router=FakeRouter(stub), workdir=tmp_workdir)
         with pytest.raises(AgentRunError) as ei:
@@ -769,6 +775,89 @@ class TestRunnerTypedResult:
                 budget=Budget(),
             )
         assert "empty response" in str(ei.value)
+        assert stub.calls == runner.max_empty_retries + 1
+        # Each retry appended a corrective user message to the conversation
+        nudges = [
+            m
+            for m in stub.messages_seen[-1]
+            if m.get("role") == "user" and "was empty" in m.get("content", "")
+        ]
+        assert len(nudges) == runner.max_empty_retries
+
+    def test_run_empty_response_retries_then_succeeds(self, tmp_workdir):
+        """An empty response is followed by a corrective nudge, then succeeds."""
+        stub = StubLLM(
+            [
+                LLMResponse(content=None, tool_calls=[]),
+                content_response(VERDICT_JSON),
+            ]
+        )
+        runner = AgentRunner(router=FakeRouter(stub), workdir=tmp_workdir)
+        result = runner.run(
+            system_prompt="s",
+            user_prompt="u",
+            tools=[],
+            output_schema=Verdict,
+            model_role="scout",
+            budget=Budget(),
+        )
+        assert isinstance(result, Verdict)
+        assert result.verdict == "COMPLETE"
+        assert stub.calls == 2
+        nudge = stub.messages_seen[1][-1]
+        assert nudge["role"] == "user"
+        assert "was empty" in nudge["content"]
+
+    def test_run_blank_whitespace_response_retries(self, tmp_workdir):
+        """Whitespace-only content counts as empty and recovers with a nudge."""
+        stub = StubLLM(
+            [
+                LLMResponse(content="   \n\t  ", tool_calls=[]),
+                content_response(VERDICT_JSON),
+            ]
+        )
+        runner = AgentRunner(router=FakeRouter(stub), workdir=tmp_workdir)
+        result = runner.run(
+            system_prompt="s",
+            user_prompt="u",
+            tools=[],
+            output_schema=Verdict,
+            model_role="scout",
+            budget=Budget(),
+        )
+        assert isinstance(result, Verdict)
+        assert result.verdict == "COMPLETE"
+        assert stub.calls == 2
+
+    def test_run_empty_retry_counter_resets_on_tool_calls(self, tmp_workdir):
+        """The empty-retry budget resets whenever a non-empty response arrives.
+
+        Three isolated empties (each separated by a tool-call turn) would
+        exhaust a non-resetting counter and raise; with the per-response reset
+        each empty is retry #1, so the run completes.
+        """
+        stub = StubLLM(
+            [
+                LLMResponse(content=None, tool_calls=[]),
+                tool_response("echo", {"x": 1}),
+                LLMResponse(content=None, tool_calls=[]),
+                tool_response("echo", {"x": 2}),
+                LLMResponse(content=None, tool_calls=[]),
+                content_response(VERDICT_JSON),
+            ]
+        )
+        runner = AgentRunner(router=FakeRouter(stub), workdir=tmp_workdir)
+        result = runner.run(
+            system_prompt="s",
+            user_prompt="u",
+            tools=[make_echo_tool()],
+            output_schema=Verdict,
+            model_role="scout",
+            budget=Budget(),
+        )
+        assert isinstance(result, Verdict)
+        assert result.verdict == "COMPLETE"
+        assert stub.calls == 6
 
     def test_run_unknown_tool_reported(self, tmp_workdir):
         """An unregistered tool name is reported back to the model as an error."""

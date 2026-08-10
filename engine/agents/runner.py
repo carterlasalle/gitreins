@@ -82,6 +82,7 @@ class AgentRunner:
         command_timeout: int = 30,
         max_tokens_per_call: int = 16384,
         max_compactions: int = 3,
+        max_empty_retries: int = 3,
         skip_duplicates: bool = False,
         on_compact: Callable[[list[dict], int], list[dict]] | None = None,
         parser: Callable[[str], Any] | None = None,
@@ -94,11 +95,14 @@ class AgentRunner:
         ``parser`` optionally replaces the output-schema parser for final
         answers (default: ``parse_response`` against ``output_schema``) —
         used by agents whose final-answer format needs custom leniency
-        (e.g. the CriteriaEvaluator's verdict parser)."""
+        (e.g. the CriteriaEvaluator's verdict parser). ``max_empty_retries``
+        bounds corrective retries when the LLM returns an empty/blank response
+        with no tool calls (default 3)."""
         self.workdir = os.path.abspath(workdir)
         self.command_timeout = command_timeout
         self.max_tokens_per_call = max_tokens_per_call
         self.max_compactions = max_compactions
+        self.max_empty_retries = max_empty_retries
         self.skip_duplicates = skip_duplicates
         self._on_compact = on_compact
         self._parser = parser
@@ -148,7 +152,8 @@ class AgentRunner:
 
         Raises:
           BudgetExceededError — iteration/time/token budget exhausted.
-          AgentRunError — LLM transport failure or empty final response.
+          AgentRunError — LLM transport failure, or an empty final response
+          that exhausted the corrective-retry budget (``max_empty_retries``).
         """
         # Fresh per-run state
         self._sandbox.clear()
@@ -173,6 +178,7 @@ class AgentRunner:
         last_prompt_tok = 0
         max_compactions = self.max_compactions
         parse_error: SchemaError | None = None
+        empty_retries = 0  # consecutive empty-response retries (reset on any non-empty response)
 
         while iteration < iter_limit:
             # Hard caps (time/tokens) checked before each LLM call
@@ -244,11 +250,14 @@ class AgentRunner:
 
             # No tool calls → the model is delivering its final answer
             if not response.tool_calls:
-                if response.content:
+                content = response.content
+                if content and content.strip():
+                    # Non-empty final answer — reset the empty-retry budget
+                    empty_retries = 0
                     try:
                         if self._parser is not None:
-                            return self._parser(response.content)
-                        return parse_response(response.content, output_schema)
+                            return self._parser(content)
+                        return parse_response(content, output_schema)
                     except SchemaError as e:
                         parse_error = e
                         logger.warning("Output schema parse failed: %s", e)
@@ -265,7 +274,31 @@ class AgentRunner:
                         )
                         iteration += 1
                         continue
-                raise AgentRunError("LLM returned an empty response with no tool calls.")
+                # Empty/blank response with no tool calls — NOT a transport error
+                # (engine/llm.py already retries those), so recover here with a
+                # corrective nudge instead of crashing the whole review DAG.
+                if empty_retries >= self.max_empty_retries:
+                    raise AgentRunError("LLM returned an empty response with no tool calls.")
+                empty_retries += 1
+                logger.warning(
+                    "LLM returned an empty response (corrective retry %d/%d)",
+                    empty_retries,
+                    self.max_empty_retries,
+                )
+                messages.append(
+                    {
+                        "role": "user",
+                        "content": (
+                            "Your previous response was empty. Respond with either a "
+                            "tool call or the final JSON answer in the required format."
+                        ),
+                    }
+                )
+                iteration += 1
+                continue
+
+            # Non-empty (tool-call) response — reset the empty-retry budget
+            empty_retries = 0
 
             # Assistant message carrying the tool calls
             messages.append(
