@@ -184,6 +184,12 @@ Extract the good parts of `AgenticEvaluator` into `engine/agents/runner.py`:
 > check exit 0). tier1 tests step FAIL = SIGKILL -9 judge-subprocess artifact (120s-ish
 > mid-suite kill, no failure text) — not a code failure.
 
+### QUALITY-FMT-001 — ruff format test files drifted from canonical format ✅ 9811b15 (judge PASS d532f3cb)
+- [x] QUALITY-FMT-001 ruff format tests/test_task_manager.py, test_types.py, test_v07_features.py — 3 files reformatted (+4/-9, pure formatting collapse, zero semantic change) (9811b15, 2026-08-10, worker deepseek-v4-flash)
+- [x] QUALITY-FMT-001 verify: `uv run ruff format --check` on the 3 files → "3 files already formatted" exit 0; `uv run ruff check .` → "All checks passed!" exit 0; `uv run pytest tests/test_task_manager.py -q` → 39 passed (1.78s); gitreins guard PASS (staged, diff mode)
+- [x] QUALITY-FMT-001 judge verdict d532f3cb: tier1 lint/secrets/tests ALL PASS, tier2 COMPLETE 2/2 (both criteria verified via live command runs); push verified (origin/v2 == HEAD)
+> Note: whole-repo `ruff format --check` still lists 41 engine files as would-reformat — pre-existing drift, format was never an enforced gate (CI runs `gitreins guard`; guard lint = `ruff check` only). Left untouched: 41-file formatting churn = zero-behavior diff, no gate benefit. Revisit if format enforcement is ever added.
+
 ## NEVER-DONE (audit — run only when board is empty)
 - Full regression: `gitreins guard`, evaluator suite, review DAG E2E against a
   seeded repo, PR-mode smoke.
