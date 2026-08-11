@@ -111,8 +111,7 @@ def test_tier1_summary_combines_failure_count_with_tail():
     )
 
     assert result.summary == (
-        "  ✗ tests — 1 failure(s); "
-        "FAILED tests/test_x.py::test_y - AssertionError: boom"
+        "  ✗ tests — 1 failure(s); FAILED tests/test_x.py::test_y - AssertionError: boom"
     )
 
 

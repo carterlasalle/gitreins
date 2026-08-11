@@ -357,9 +357,7 @@ class TestTaskIntentContext:
         config_dir = os.path.join(workdir, ".gitreins")
         os.makedirs(config_dir, exist_ok=True)
         with open(os.path.join(config_dir, "tasks.yaml"), "w") as f:
-            yaml.dump(
-                {"tasks": tasks}, f, default_flow_style=False, sort_keys=False
-            )
+            yaml.dump({"tasks": tasks}, f, default_flow_style=False, sort_keys=False)
 
     def test_intent_context_returns_expected_dicts(self, tmp_workdir):
         """intent_context() projects existing tasks as {id,title,criteria,status}."""

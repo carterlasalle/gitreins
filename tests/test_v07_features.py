@@ -365,8 +365,7 @@ class TestInit:
         (tmp_path / "tests").mkdir()
         (tmp_path / "tests" / "test_todo.py").write_text("def test_add(): pass\n")
         (tmp_path / "pyproject.toml").write_text(
-            "[project]\nname='todo'\n"
-            "[tool.pytest.ini_options]\npythonpath = [\".\"]\n"
+            "[project]\nname='todo'\n[tool.pytest.ini_options]\npythonpath = [\".\"]\n"
         )
 
         lang = _detect_language(str(tmp_path))
@@ -407,8 +406,7 @@ class TestInit:
         from gitreins.cli import _has_pytest_pythonpath_config
 
         (tmp_path / "pyproject.toml").write_text(
-            "[project]\nname='todo'\n"
-            "[tool.pytest.ini_options]\npythonpath = [\".\"]\n"
+            "[project]\nname='todo'\n[tool.pytest.ini_options]\npythonpath = [\".\"]\n"
         )
         assert _has_pytest_pythonpath_config(str(tmp_path)) is True
 
