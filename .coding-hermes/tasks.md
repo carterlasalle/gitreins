@@ -190,6 +190,12 @@ Extract the good parts of `AgenticEvaluator` into `engine/agents/runner.py`:
 - [x] QUALITY-FMT-001 judge verdict d532f3cb: tier1 lint/secrets/tests ALL PASS, tier2 COMPLETE 2/2 (both criteria verified via live command runs); push verified (origin/v2 == HEAD)
 > Note: whole-repo `ruff format --check` still lists 41 engine files as would-reformat — pre-existing drift, format was never an enforced gate (CI runs `gitreins guard`; guard lint = `ruff check` only). Left untouched: 41-file formatting churn = zero-behavior diff, no gate benefit. Revisit if format enforcement is ever added.
 
+### DEPS-RUFF-001 — bump ruff dev dep 0.15.22 → 0.16.2 ✅ ca08bee (judge PASS 7384b49e)
+- [x] DEPS-RUFF-001 uv.lock resolves ruff to 0.16.2 via `uv lock --upgrade-package ruff` (only ruff version changed; 66 lock diff lines = automatic marker normalization + new hashes, no other package versions touched) (ca08bee, 2026-08-11, worker)
+- [x] DEPS-RUFF-001 verify: `uv run ruff --version` → 0.16.2; `uv run ruff check .` → exit 0 (no new lint failures from 0.16.2, zero lint fixes needed); `ruff format --check` on the 3 QUALITY-FMT-001 files → already formatted; full suite `uv run pytest -x --tb=short` → 1730 passed, 8 skipped (635s; test_cli lifecycle flake did not fire); `gitreins guard` PASS (diff mode, full-suite safety trigger)
+- [x] DEPS-RUFF-001 judge verdict 7384b49e: tier1 lint/secrets/tests ALL PASS, tier2 COMPLETE 3/3 (all three criteria verified via live command runs); push verified (origin/v2 == HEAD, 0 unpushed)
+> Audit finding: `uv pip list --outdated` showed ruff 0.15.22 → 0.16.2 as the ONLY actionable direct dev dep; all other outdated packages (pydantic-core, cryptography, starlette, uvicorn, etc.) are transitive or pinned by pydantic (`pydantic-core==` exact-pin pitfall) — correctly left untouched.
+
 ## NEVER-DONE (audit — run only when board is empty)
 - Full regression: `gitreins guard`, evaluator suite, review DAG E2E against a
   seeded repo, PR-mode smoke.
