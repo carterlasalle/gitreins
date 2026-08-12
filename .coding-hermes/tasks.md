@@ -227,3 +227,20 @@ Extract the good parts of `AgenticEvaluator` into `engine/agents/runner.py`:
 > GITREINS_LLM_API_KEY/OPENROUTER_API_KEY → test_llm.py env-priority tests
 > broke (1 failed, 58 passed clean). Fix now centralized in env_sanitize.py —
 > the block list can never drift again. R2.x phase build COMPLETE.
+
+### E2E-001 — E2E testing tick: full GitReins CLI lifecycle against a seeded repo ✅ 177ecb2 (judge PASS 5b94bc20)
+- [x] E2E-001 seeded throwaway repo /tmp/gitreins-e2e-20260811-220946 (real calc.py + tests + pyproject), ran the FULL loop with the editable install (.venv/bin/gitreins → engine resolves to this repo): init (exit 0) → baseline commit hook guard PASS (b846cb2) → task create/start E2E-DEMO (2 criteria) → real sub() change → `gitreins guard` PASS (GUARD_EXIT=0, 5 tests) → **Tier 2 judge fired: Overall PASS verdict 7ee0317a** (tier1 lint/secrets/tests exit 0, tier2 COMPLETE 2/2; verdict.json persisted on gitreins branch, `gitreins report` 1/1 = 100%) → `gitreins review` DAG exit 0 (Lane B 0 findings) → change commit via hook guard PASS (6aa4e94). (177ecb2, 2026-08-11, worker deepseek-v4-flash)
+- [x] E2E-001 deliverables committed: e2e-output/report.md (9.9K: env, seeded layout, all 9 checkpoints with real output + exit codes, defect detail) + e2e-output/tasks.md (4.6K: evidence table 8 PASS / 1 PARTIAL + DEFECT-001 + 3 observations) (177ecb2)
+- [x] E2E-001 judge verdict 5b94bc20 (this tick's gate): tier1 lint/secrets/tests ALL PASS, tier2 COMPLETE (auto-parsed; 1 JSON-parse warning recovered by keyword fallback); push verified (origin/v2 == HEAD)
+> E2E outcome: lifecycle GREEN with 1 real defect + 3 observations (full details in e2e-output/tasks.md). **DEFECT-001 → new board task below (next tick).** OBS-002 judge run resets git index (re-add before commit — skill pitfall 16), OBS-003 review DAG schema-parse warnings (recovers, noisy), OBS-004 semgrep/trivy/pylsp degrade gracefully (info).
+
+## [ ] E2E-001-DEFECT-001 — `gitreins review` (local CLI path) never persists `review_runs/<sha>/` §13 artifacts
+- **Priority:** High | **Complexity:** 3±1 | **Deps:** — | **Model:** deepseek-v4-flash (worker) | **Reasoning:** Medium | **Fallback:** —
+- **Found by:** E2E-001 (2026-08-11). In any initialized repo with a working-tree change, `gitreins review` (no args) exits 0 and prints Lane B findings but `review_runs/` is never created.
+- **Root cause:** `gitreins/cli.py:cmd_review` → `engine/pipeline.py::Pipeline.run_review`; the review pipeline config (`cli.py:_default_review_pipeline`) has no archive stage and `run_review` accepts no archiver. `ReviewRunArchiver` (engine/review/history.py) is wired only into `ReviewOrchestrator` (engine/review/orchestrator.py:145-147), instantiated only by the GitHub-App path (engine/github/app.py:142). Local reviews persist nothing.
+- **Acceptance:** `gitreins review` writes the nine §13 artifacts under `review_runs/<sha>/` (manifest, change, static-evidence, scout, candidates, verification, final-findings, requirements, usage); archive failures logged, never raised (R2.13 contract); regression test proves artifacts exist after a local review run.
+- **Suggested fix:** wire `ReviewRunArchiver(base_dir=workdir)` into `Pipeline.run_review` (or `cmd_review`) after the DAG completes; key by base_sha/head_sha from the ChangeSource; add a pipeline `archive_review` step mirroring orchestrator's `_archive_all`.
+- **GitReins task:** create/start before work, `task complete` after commit (judge fires), then delete.
+
+## NEVER-DONE (audit — run when board otherwise empty)
+- E2E tick (E2E-001) ran 2026-08-11 — full lifecycle green; next E2E in ~5-10 ticks unless DEFECT-001 work changes the cadence.
