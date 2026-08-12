@@ -234,7 +234,10 @@ Extract the good parts of `AgenticEvaluator` into `engine/agents/runner.py`:
 - [x] E2E-001 judge verdict 5b94bc20 (this tick's gate): tier1 lint/secrets/tests ALL PASS, tier2 COMPLETE (auto-parsed; 1 JSON-parse warning recovered by keyword fallback); push verified (origin/v2 == HEAD)
 > E2E outcome: lifecycle GREEN with 1 real defect + 3 observations (full details in e2e-output/tasks.md). **DEFECT-001 → new board task below (next tick).** OBS-002 judge run resets git index (re-add before commit — skill pitfall 16), OBS-003 review DAG schema-parse warnings (recovers, noisy), OBS-004 semgrep/trivy/pylsp degrade gracefully (info).
 
-## [ ] E2E-001-DEFECT-001 — `gitreins review` (local CLI path) never persists `review_runs/<sha>/` §13 artifacts
+## [x] E2E-001-DEFECT-001 — `gitreins review` (local CLI path) never persists `review_runs/<sha>/` §13 artifacts ✅ f298cb6 (judge PASS 45d694c0)
+- [x] E2E-001-DEFECT-001 fix: ReviewRunArchiver wired into the LOCAL review path — `cmd_review` constructs `ReviewRunArchiver(base_dir=workdir, commit_sha=task['head_sha'])` and passes it to `Pipeline.run_review`; `run_review` gained `archiver=` param + `_archive_review_run` maps all nine §13 groups (change, static_evidence, scout, candidates, verification, final_findings, requirements, usage, manifest) onto `archiver.archive_all`, mirroring the orchestrator pattern (f298cb6, 2026-08-11, worker deepseek-v4-flash)
+- [x] E2E-001-DEFECT-001 verify: `uv run ruff check .` clean; targeted `tests/test_review_history.py test_review_cli.py test_review_pipeline_dag.py` → 45 passed (incl. 4 new regression tests); real smoke: `gitreins review` in throwaway repo wrote review_runs/<sha>/ with all nine artifacts at exit 0; archive-failure path degrades to `logger.warning` never raises (DAG still reports passed); no-archiver callers (GitHub-App) untouched (f298cb6)
+- [x] E2E-001-DEFECT-001 judge verdict 45d694c0 (history 15cd01ef): tier1 lint/secrets/tests ALL PASS, tier2 COMPLETE 3/3 (all three criteria verified via live pytest runs — 4 passed in 1.73s + 36 passed in 3.16s, archive-failure regression asserts passed=True); gitreins task deleted after judge; push verified (origin/v2 == HEAD, 0 unpushed)
 - **Priority:** High | **Complexity:** 3±1 | **Deps:** — | **Model:** deepseek-v4-flash (worker) | **Reasoning:** Medium | **Fallback:** —
 - **Found by:** E2E-001 (2026-08-11). In any initialized repo with a working-tree change, `gitreins review` (no args) exits 0 and prints Lane B findings but `review_runs/` is never created.
 - **Root cause:** `gitreins/cli.py:cmd_review` → `engine/pipeline.py::Pipeline.run_review`; the review pipeline config (`cli.py:_default_review_pipeline`) has no archive stage and `run_review` accepts no archiver. `ReviewRunArchiver` (engine/review/history.py) is wired only into `ReviewOrchestrator` (engine/review/orchestrator.py:145-147), instantiated only by the GitHub-App path (engine/github/app.py:142). Local reviews persist nothing.
@@ -243,4 +246,4 @@ Extract the good parts of `AgenticEvaluator` into `engine/agents/runner.py`:
 - **GitReins task:** create/start before work, `task complete` after commit (judge fires), then delete.
 
 ## NEVER-DONE (audit — run when board otherwise empty)
-- E2E tick (E2E-001) ran 2026-08-11 — full lifecycle green; next E2E in ~5-10 ticks unless DEFECT-001 work changes the cadence.
+- E2E tick (E2E-001) ran 2026-08-11 — full lifecycle green; DEFECT-001 (local review archiver) FIXED 2026-08-11 (f298cb6, judge PASS 45d694c0); next E2E in ~5-10 ticks unless new work changes the cadence.
