@@ -15,6 +15,9 @@ network. External analyzer producers are monkeypatched to deterministic
 results (or []), so no real semgrep/gitleaks/trivy/LSP binaries run.
 """
 
+import json
+import os
+
 import pytest
 
 from engine.llm import LLMResponse
@@ -546,3 +549,66 @@ class TestReviewStageErrors:
         stage = result["stages"]["runtime"]
         assert stage["passed"] is True
         assert stage["steps"][0]["data"]["count"] == 1
+
+
+# ── §13 archiving: run_review persists the completed run (E2E-001) ─────────
+
+
+class TestReviewDagArchiving:
+    """run_review with an archiver persists review_runs/<sha>/ artifacts."""
+
+    def test_run_review_archives_all_nine_artifacts(self, tmp_workdir):
+        from engine.review.history import ARTIFACT_NAMES, ReviewRunArchiver
+
+        p = Pipeline(review_config(), tmp_workdir, router=review_router())
+        task = make_task()
+        archiver = ReviewRunArchiver(base_dir=tmp_workdir, commit_sha="abc123")
+        result = p.run_review(task, archiver=archiver)
+
+        assert result["passed"] is True
+        run_dir = os.path.join(tmp_workdir, "review_runs", "abc123")
+        assert set(os.listdir(run_dir)) == set(ARTIFACT_NAMES)
+        for name in ARTIFACT_NAMES:
+            assert os.path.isfile(os.path.join(run_dir, name)), name
+
+        # The artifact contents map the DAG's stage data (§13 / orchestrator
+        # pattern): change from the task, findings from the verified/ranked
+        # list, requirements from the Lane A verdicts.
+        change = json.load(open(os.path.join(run_dir, "change.json")))
+        assert change["changed_files"] == ["auth/session.py"]
+        final = json.load(open(os.path.join(run_dir, "final-findings.json")))
+        assert final["count"] == 3
+        assert all(f["verified_by"] for f in final["findings"])  # verifier stamped
+        verification = json.load(open(os.path.join(run_dir, "verification.json")))
+        assert verification["count"] == 3
+        reqs = json.load(open(os.path.join(run_dir, "requirements.json")))
+        assert reqs["count"] == 2
+        usage = json.load(open(os.path.join(run_dir, "usage.json")))
+        assert "rank" in usage["stages"] and usage["total_findings"] == 3
+        manifest = json.load(open(os.path.join(run_dir, "manifest.json")))
+        assert manifest["commit_sha"] == "abc123"
+        assert all(manifest["artifacts"][name] for name in ARTIFACT_NAMES)
+
+    def test_no_archiver_skips_archiving(self, tmp_workdir):
+        """Default run_review callers (GitHub-App path) are untouched."""
+        p = Pipeline(review_config(), tmp_workdir, router=review_router())
+        result = p.run_review(make_task())
+        assert result["passed"] is True
+        assert not os.path.exists(os.path.join(tmp_workdir, "review_runs"))
+
+    def test_archive_failure_never_breaks_run_review(self, tmp_workdir):
+        from engine.review.history import ReviewRunArchiver
+
+        p = Pipeline(review_config(), tmp_workdir, router=review_router())
+        task = make_task()
+        blocker = os.path.join(tmp_workdir, "blocker")
+        with open(blocker, "w") as f:
+            f.write("not a directory")
+        archiver = ReviewRunArchiver(
+            base_dir=os.path.join(blocker, "nested"), commit_sha="abc"
+        )
+        # The DAG still completes and reports passed; the archive failure is
+        # logged, never raised (R2.13).
+        result = p.run_review(task, archiver=archiver)
+        assert result["passed"] is True
+        assert not os.path.exists(archiver.run_dir)

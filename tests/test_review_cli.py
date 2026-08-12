@@ -332,6 +332,37 @@ class TestCmdReviewLocal:
         assert "Lane A — criteria evaluation (0 criterion/criteria)" in out
         assert "no criteria provided — Lane A skipped" in out
 
+    def test_local_review_persists_review_runs_artifacts(self, tmp_path, monkeypatch):
+        """§13 (E2E-001): the local review path archives review_runs/<sha>/."""
+        from engine.review.history import ARTIFACT_NAMES
+        from gitreins import cli as cli_module
+
+        repo = make_git_repo(tmp_path)
+        monkeypatch.setattr(cli_module, "get_workdir", lambda: repo)
+
+        cli_module.cmd_review(review_args())
+
+        runs_dir = os.path.join(repo, "review_runs")
+        shas = [
+            d for d in os.listdir(runs_dir) if os.path.isdir(os.path.join(runs_dir, d))
+        ]
+        assert len(shas) == 1
+        # The run dir is keyed by the working-tree change's head sha.
+        assert len(shas[0]) == 40
+        run_dir = os.path.join(runs_dir, shas[0])
+        for name in ARTIFACT_NAMES:
+            assert os.path.isfile(os.path.join(run_dir, name)), name
+
+        # The change artifact records the file under review; the manifest
+        # confirms every §13 artifact was persisted.
+        with open(os.path.join(run_dir, "change.json")) as f:
+            change = json.load(f)
+        assert change["changed_files"] == ["auth.py"]
+        with open(os.path.join(run_dir, "manifest.json")) as f:
+            manifest = json.load(f)
+        assert manifest["commit_sha"] == shas[0]
+        assert all(manifest["artifacts"][name] for name in ARTIFACT_NAMES)
+
 
 # ── cmd_review: --pr path with mocked gh ───────────────────────────────────
 

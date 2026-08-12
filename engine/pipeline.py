@@ -49,10 +49,14 @@ import logging
 import os
 import subprocess
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
 
 import yaml
 
 from engine.env_sanitize import sanitized_env
+
+if TYPE_CHECKING:  # pragma: no cover — annotation-only, avoids an import cycle
+    from engine.review.history import ReviewRunArchiver
 
 logger = logging.getLogger("gitreins.pipeline")
 
@@ -149,7 +153,9 @@ class Pipeline:
 
         return self._compile_results()
 
-    def run_review(self, task: dict) -> dict:
+    def run_review(
+        self, task: dict, archiver: "ReviewRunArchiver | None" = None
+    ) -> dict:
         """Run the DESIGN_v2.md §17 review DAG stages (R2.16).
 
         Stages come from the config ``review_pipeline`` key: a flat list of
@@ -164,6 +170,14 @@ class Pipeline:
         Findings are plumbed through ``task["findings"]`` (one dict per
         finding) so later stages and the caller consume the same list; Lane A
         verdicts land on ``task["criteria_verdicts"]``.
+
+        Args:
+            archiver: Optional ReviewRunArchiver for §13 rich review history
+                (R2.13). When given, the completed run is persisted under
+                ``review_runs/<sha>/`` after the DAG — best-effort, a failure
+                is logged (R2.13) and never breaks the review. None → no
+                archiving (the GitHub-App path keeps its own default archiver
+                via ReviewOrchestrator, engine/review/orchestrator.py).
         """
         self._stage_results = {}
 
@@ -184,7 +198,68 @@ class Pipeline:
 
             self._stage_results[stage_id] = result
 
-        return self._compile_results()
+        result = self._compile_results()
+        if archiver is not None:
+            self._archive_review_run(archiver, task, result)
+        return result
+
+    def _archive_review_run(
+        self, archiver: "ReviewRunArchiver", task: dict, result: dict
+    ) -> None:
+        """Persist the completed local review under ``review_runs/<sha>/`` (§13).
+
+        Mirrors ``ReviewOrchestrator._archive_run`` (engine/review/
+        orchestrator.py): every stage's data is mapped onto the archiver's
+        ``archive_all`` — change, static-evidence, scout, candidates,
+        verification, final-findings, requirements, usage, manifest. The run
+        is keyed by the caller-provided archiver (cmd_review passes
+        ``task["head_sha"]``); the archiver falls back to ``git rev-parse
+        HEAD`` at its base dir. Archiving is best-effort (R2.13): any failure
+        is logged and never raises — the review command still exits 0.
+        """
+        findings = [dict(f) for f in (task.get("findings") or [])]
+
+        static_evidence: list = []
+        store = task.get("evidence_store")
+        if store is not None and hasattr(store, "query"):
+            static_evidence = list(store.query(kind="static_analysis")) + list(
+                store.query(kind="lsp")
+            )
+
+        # Verification entries derive from the verified finding dicts — the
+        # verify_findings stage stamps verdict/confidence/impact on each.
+        verification = [
+            {
+                "finding_id": str(f.get("finding_id") or f.get("id") or ""),
+                "verdict": f.get("verdict", ""),
+                "verifier_confidence": f.get("verifier_confidence", 0.0),
+                "impact": f.get("impact", ""),
+            }
+            for f in findings
+            if f.get("verdict")
+        ]
+
+        try:
+            archiver.archive_all(
+                change={
+                    "changed_files": list(task.get("changed_files") or []),
+                    "diff_context": task.get("diff") or task.get("diff_context") or "",
+                },
+                static_evidence=static_evidence,
+                scout=task.get("scout_plan") or {},
+                candidates=findings,
+                verification=verification,
+                final_findings=findings,
+                requirements=list(task.get("criteria_verdicts") or []),
+                usage={
+                    "stages": list(result.get("stages", {})),
+                    "total_findings": len(findings),
+                    "criteria_count": len(task.get("criteria") or []),
+                },
+                manifest={"workdir": self.workdir},
+            )
+        except Exception as exc:  # noqa: BLE001 — archive boundary: never break the review
+            logger.warning("Review-run archiving failed: %s", exc)
 
     def _check_condition(self, condition: str | None, task: dict) -> bool:
         """Evaluate a condition expression.

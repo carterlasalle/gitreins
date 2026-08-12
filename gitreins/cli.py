@@ -1842,10 +1842,19 @@ def cmd_review(args):
         sys.exit(0)
 
     from engine.pipeline import Pipeline
+    from engine.review.history import ReviewRunArchiver
 
     router = _make_review_router(config)
     pipeline = Pipeline(_review_config(config), workdir, router=router)
-    result = pipeline.run_review(task)
+    # §13 rich review history (R2.13): persist the run under
+    # review_runs/<sha>/ — keyed by the change's head sha (falls back to
+    # `git rev-parse HEAD` inside the archiver). Best-effort: an archive
+    # failure is logged and never changes the review's exit code.
+    archiver = ReviewRunArchiver(
+        base_dir=workdir,
+        commit_sha=str(task.get("head_sha") or "") or None,
+    )
+    result = pipeline.run_review(task, archiver=archiver)
 
     print(_format_review_report(task, result))
 
