@@ -142,8 +142,10 @@ class TestBlockPolicy:
 
     def test_all_factors_false_never_blocks(self):
         f = make_verdict(
-            impact="info", patch_causality="refuted",
-            execution_path_confirmed=False, verifier_confidence=0.0,
+            impact="info",
+            patch_causality="refuted",
+            execution_path_confirmed=False,
+            verifier_confidence=0.0,
         )
         assert BLOCK(f) is False
 
@@ -267,7 +269,12 @@ class TestVerifierSchema:
         assert '"findings"' in prompt
         assert '"summary"' in prompt
         assert "list[VerifierFinding]" in prompt
-        for name in ("verdict", "verifier_confidence", "patch_causality", "execution_path_confirmed"):
+        for name in (
+            "verdict",
+            "verifier_confidence",
+            "patch_causality",
+            "execution_path_confirmed",
+        ):
             assert name in schema_to_prompt(VerifierFinding)
 
     def test_finding_to_dict_shape(self):
@@ -450,13 +457,15 @@ class TestCandidatePrompt:
         assert "refresh token belonging to deleted account" in user_prompt
         for ref in ("E12", "E33", "E52"):
             assert ref in user_prompt
-        for step in ("inspect caller guard", "inspect get_user return contract", "run targeted regression test"):
+        for step in (
+            "inspect caller guard",
+            "inspect get_user return contract",
+            "run targeted regression test",
+        ):
             assert step in user_prompt
 
     def test_serialize_candidate_omits_empty_sections(self):
-        text = serialize_candidate(
-            VerifierCandidate(finding_id="F1", file="a.py", claim="c")
-        )
+        text = serialize_candidate(VerifierCandidate(finding_id="F1", file="a.py", claim="c"))
         assert "F1" in text
         assert "a.py" in text
         assert "Evidence refs" not in text

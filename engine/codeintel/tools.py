@@ -71,9 +71,7 @@ def _tool(
         limit: int = DEFAULT_LIMIT,
     ) -> list[dict]:
         try:
-            result = provider_method(
-                query, file_path=file_path, symbol=symbol, limit=limit
-            )
+            result = provider_method(query, file_path=file_path, symbol=symbol, limit=limit)
         except Exception as exc:  # noqa: BLE001 — tool boundary: degrade, don't crash
             logger.warning("codeintel tool %s failed: %s", name, exc)
             return []

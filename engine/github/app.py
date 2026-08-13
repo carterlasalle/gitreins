@@ -130,8 +130,10 @@ def run_pr_review(
         engine.github.checkout.ChangeSourceError: The PR could not be read
             (gh missing/unauthenticated/not found) — nothing to review.
     """
-    src = source if source is not None else PullRequestChangeSource(
-        owner, repo, pr_number, gh_binary=gh_binary
+    src = (
+        source
+        if source is not None
+        else PullRequestChangeSource(owner, repo, pr_number, gh_binary=gh_binary)
     )
     diff = src.diff()
     files = src.changed_files()
@@ -155,9 +157,7 @@ def run_pr_review(
     )
     batch = writer_.run(deduped, changed_files=files, diff_context=diff.text)
 
-    publish = publish_comments(
-        owner, repo, pr_number, batch, gh_binary=gh_binary, token=token
-    )
+    publish = publish_comments(owner, repo, pr_number, batch, gh_binary=gh_binary, token=token)
 
     state, description = _status_for(batch, result.all_ok)
     head_sha = src.head_sha()
@@ -179,9 +179,7 @@ def run_pr_review(
             "posted": posted,
         }
     else:
-        logger.warning(
-            "no head sha for %s/%s#%s — skipping status check", owner, repo, pr_number
-        )
+        logger.warning("no head sha for %s/%s#%s — skipping status check", owner, repo, pr_number)
 
     return PrReviewResult(
         owner=owner,

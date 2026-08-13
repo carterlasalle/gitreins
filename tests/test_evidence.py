@@ -137,7 +137,9 @@ def test_append_assigns_monotonic_ids(store):
     e1 = store.append(make_evidence())
     e2 = store.append(make_evidence())
     e3 = store.append(
-        make_evidence(kind="test", source="pytest", file=None, line_start=None, line_end=None, payload={})
+        make_evidence(
+            kind="test", source="pytest", file=None, line_start=None, line_end=None, payload={}
+        )
     )
     assert e1.id == "E1"
     assert e2.id == "E2"
@@ -147,7 +149,14 @@ def test_append_assigns_monotonic_ids(store):
 
 
 def test_append_accepts_kwargs(store):
-    ev = store.append(kind="command", source="git", file=None, line_start=None, line_end=None, payload={"exit_code": 0})
+    ev = store.append(
+        kind="command",
+        source="git",
+        file=None,
+        line_start=None,
+        line_end=None,
+        payload={"exit_code": 0},
+    )
     assert ev.id == "E1"
     assert ev.kind == "command"
     assert store.get("E1") is ev
@@ -173,9 +182,20 @@ def test_get_missing_returns_none(store):
 def test_all_returns_append_order(store):
     e1 = store.append(make_evidence())
     e2 = store.append(
-        make_evidence(kind="command", source="git", file=None, line_start=None, line_end=None, payload={"exit_code": 0})
+        make_evidence(
+            kind="command",
+            source="git",
+            file=None,
+            line_start=None,
+            line_end=None,
+            payload={"exit_code": 0},
+        )
     )
-    e3 = store.append(make_evidence(kind="test", source="pytest", file=None, line_start=None, line_end=None, payload={}))
+    e3 = store.append(
+        make_evidence(
+            kind="test", source="pytest", file=None, line_start=None, line_end=None, payload={}
+        )
+    )
     assert store.all() == [e1, e2, e3]
 
 
@@ -220,12 +240,20 @@ def test_thread_safety_concurrent_appends():
 
 def test_evidence_for_resolves_refs(store):
     e1 = store.append(make_evidence())
-    sa1 = store.append(make_evidence(kind="static_analysis", source="semgrep", file="a.py", payload={"code": "A1"}))
-    sa2 = store.append(make_evidence(kind="static_analysis", source="semgrep", file="b.py", payload={"code": "A2"}))
-    cmd = store.append(
-        make_evidence(kind="command", source="verifier", id="verification-F19", payload={"exit_code": 0})
+    sa1 = store.append(
+        make_evidence(kind="static_analysis", source="semgrep", file="a.py", payload={"code": "A1"})
     )
-    graph = store.append(make_evidence(kind="call_edge", source="caller", payload={"key": "Session.refresh"}))
+    sa2 = store.append(
+        make_evidence(kind="static_analysis", source="semgrep", file="b.py", payload={"code": "A2"})
+    )
+    cmd = store.append(
+        make_evidence(
+            kind="command", source="verifier", id="verification-F19", payload={"exit_code": 0}
+        )
+    )
+    graph = store.append(
+        make_evidence(kind="call_edge", source="caller", payload={"key": "Session.refresh"})
+    )
 
     resolved = store.evidence_for(
         ["E1", "static:semgrep:2", "test:verification-F19", "graph:caller:Session.refresh"]
@@ -235,7 +263,14 @@ def test_evidence_for_resolves_refs(store):
 
 def test_evidence_for_source_file_ref(store):
     ev = store.append(
-        make_evidence(kind="reference", source="rg", file="auth/session.py", line_start=181, line_end=185, payload={})
+        make_evidence(
+            kind="reference",
+            source="rg",
+            file="auth/session.py",
+            line_start=181,
+            line_end=185,
+            payload={},
+        )
     )
     assert store.evidence_for(["source:auth/session.py:181"]) == [ev]
     assert store.evidence_for(["source:auth/session.py:183"]) == [ev]  # inside span
@@ -280,8 +315,18 @@ def test_provenance_record_and_lookup(store):
 
 
 def test_provenance_auto_id_and_roundtrip(store):
-    p1 = record(store, evidence_refs=["E1"], generated_by={"role": "r", "model": "m"}, verified_by={"model": "v", "verdict": "confirmed"})
-    p2 = record(store, evidence_refs=["E2"], generated_by={"role": "r", "model": "m"}, verified_by={"model": "v", "verdict": "rejected"})
+    p1 = record(
+        store,
+        evidence_refs=["E1"],
+        generated_by={"role": "r", "model": "m"},
+        verified_by={"model": "v", "verdict": "confirmed"},
+    )
+    p2 = record(
+        store,
+        evidence_refs=["E2"],
+        generated_by={"role": "r", "model": "m"},
+        verified_by={"model": "v", "verdict": "rejected"},
+    )
     assert p1.id == "P1"
     assert p2.id == "P2"
     assert store.provenance() == [p1, p2]
@@ -293,8 +338,14 @@ def test_provenance_auto_id_and_roundtrip(store):
     "ref,expected",
     [
         ("static:semgrep:17", {"kind": "static_analysis", "source": "semgrep", "ordinal": 17}),
-        ("graph:caller:Session.refresh", {"kind": "call_edge", "source": "caller", "key": "Session.refresh"}),
-        ("source:auth/session.py:181", {"kind": "reference", "file": "auth/session.py", "line": 181}),
+        (
+            "graph:caller:Session.refresh",
+            {"kind": "call_edge", "source": "caller", "key": "Session.refresh"},
+        ),
+        (
+            "source:auth/session.py:181",
+            {"kind": "reference", "file": "auth/session.py", "line": 181},
+        ),
         ("test:verification-F19", {"kind": "test", "id": "verification-F19"}),
         ("E17", {"id": "E17"}),
     ],
@@ -341,7 +392,9 @@ def test_from_static_diag_real_mypy():
 
 
 def test_from_static_diag_ordinal_ref():
-    diag = StaticDiag(file="main.py", line=9, severity="error", message="x", code="arg-type", tool="mypy")
+    diag = StaticDiag(
+        file="main.py", line=9, severity="error", message="x", code="arg-type", tool="mypy"
+    )
     ev = from_static_diag(diag, "mypy", ordinal=17)
     assert ev.id == "static:mypy:17"
 
@@ -380,8 +433,22 @@ def test_static_findings_to_evidence():
 
 def test_static_findings_to_evidence_store_resolution():
     findings = [
-        {"file": "main.py", "line": 9, "severity": "error", "message": "a", "code": "arg-type", "tool": "mypy"},
-        {"file": "main.py", "line": 15, "severity": "warning", "message": "b", "code": "no-any-return", "tool": "mypy"},
+        {
+            "file": "main.py",
+            "line": 9,
+            "severity": "error",
+            "message": "a",
+            "code": "arg-type",
+            "tool": "mypy",
+        },
+        {
+            "file": "main.py",
+            "line": 15,
+            "severity": "warning",
+            "message": "b",
+            "code": "no-any-return",
+            "tool": "mypy",
+        },
     ]
     store = EvidenceStore()
     for ev in static_findings_to_evidence(findings, "mypy"):
@@ -421,9 +488,21 @@ def test_persistence_replay(tmp_path):
     store = EvidenceStore(path)
     store.append(make_evidence())
     store.append(
-        make_evidence(kind="command", source="git", file=None, line_start=None, line_end=None, payload={"exit_code": 0})
+        make_evidence(
+            kind="command",
+            source="git",
+            file=None,
+            line_start=None,
+            line_end=None,
+            payload={"exit_code": 0},
+        )
     )
-    record(store, evidence_refs=["E1"], generated_by={"role": "r", "model": "m"}, verified_by={"model": "v", "verdict": "confirmed"})
+    record(
+        store,
+        evidence_refs=["E1"],
+        generated_by={"role": "r", "model": "m"},
+        verified_by={"model": "v", "verdict": "confirmed"},
+    )
 
     reloaded = EvidenceStore(path)
     assert reloaded.all() == store.all()

@@ -144,7 +144,11 @@ class TestCommentSchema:
 
     def test_comment_to_dict_shape(self):
         c = Comment(
-            file="a.py", line=3, severity="high", title="t", body="b",
+            file="a.py",
+            line=3,
+            severity="high",
+            title="t",
+            body="b",
             finding_ids=["F19"],
         )
         d = c.to_dict()
@@ -188,10 +192,7 @@ class TestWriterRun:
         """10 findings → still exactly one LLM call (batched, §15)."""
         stub = StubLLM([content_response(BATCH_JSON)])
         writer = CommentWriter(router=FakeRouter(stub), workdir=tmp_workdir)
-        findings = [
-            make_finding(claim=f"claim {i}", file=f"f{i}.py", line=i)
-            for i in range(10)
-        ]
+        findings = [make_finding(claim=f"claim {i}", file=f"f{i}.py", line=i) for i in range(10)]
         result = writer.run(findings)
         assert stub.calls == 1
         assert len(result.comments) == 2
@@ -228,9 +229,7 @@ class TestWriterRun:
     def test_run_accepts_dict_findings(self, tmp_workdir):
         stub = StubLLM([content_response(BATCH_JSON)])
         writer = CommentWriter(router=FakeRouter(stub), workdir=tmp_workdir)
-        result = writer.run(
-            [{"claim": "x", "severity": "high", "file": "a.py", "line": 1}]
-        )
+        result = writer.run([{"claim": "x", "severity": "high", "file": "a.py", "line": 1}])
         assert isinstance(result, CommentBatch)
 
     def test_run_accepts_verifier_finding(self, tmp_workdir):
@@ -240,8 +239,11 @@ class TestWriterRun:
         result = writer.run(
             [
                 VerifierFinding(
-                    finding_id="F19", impact="high", patch_causality="confirmed",
-                    verdict="CONFIRMED", execution_path_confirmed=True,
+                    finding_id="F19",
+                    impact="high",
+                    patch_causality="confirmed",
+                    verdict="CONFIRMED",
+                    execution_path_confirmed=True,
                     verifier_confidence=0.94,
                     notes="Traced caller guard; claim survived.",
                 )
@@ -311,8 +313,11 @@ class TestSerializeFindings:
         text = serialize_findings(
             [
                 VerifierFinding(
-                    finding_id="F19", impact="high", patch_causality="confirmed",
-                    verdict="CONFIRMED", execution_path_confirmed=True,
+                    finding_id="F19",
+                    impact="high",
+                    patch_causality="confirmed",
+                    verdict="CONFIRMED",
+                    execution_path_confirmed=True,
                     verifier_confidence=0.94,
                 )
             ]

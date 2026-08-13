@@ -597,11 +597,11 @@ These tools are defined in `EVALUATOR_TOOLS` but are opt-in depending on environ
 ```python
 @dataclass
 class EvalCap:
-    max_iterations: float = -1.0       # -1 = unlimited
-    max_seconds: float = -1.0          # -1 = unlimited
-    max_input_tokens: int = -1         # -1 = unlimited
-    max_output_tokens: int = -1        # -1 = unlimited
-    tool_call_weight: float = 0.1      # fraction per tool call
+    max_iterations: float = -1.0  # -1 = unlimited
+    max_seconds: float = -1.0  # -1 = unlimited
+    max_input_tokens: int = -1  # -1 = unlimited
+    max_output_tokens: int = -1  # -1 = unlimited
+    tool_call_weight: float = 0.1  # fraction per tool call
 
     # Runtime tracking (mutable, updated during evaluation)
     iteration_credit: float = 0.0
@@ -732,13 +732,13 @@ Level 9: Ultimate fallback
 
 ```python
 if isinstance(eval_cap, EvalCap):
-    self.eval_cap = eval_cap                    # Level 1 (pre-built)
+    self.eval_cap = eval_cap  # Level 1 (pre-built)
 elif isinstance(eval_cap, str):
-    self.eval_cap = parse_eval_cap(eval_cap)    # Level 2
+    self.eval_cap = parse_eval_cap(eval_cap)  # Level 2
 elif max_iterations is not None and max_iterations > 0:
-    self.eval_cap = EvalCap(max_iterations=...) # Level 7
+    self.eval_cap = EvalCap(max_iterations=...)  # Level 7
 else:
-    config = self._load_config()                # Levels 3-6
+    config = self._load_config()  # Levels 3-6
     self.eval_cap = eval_cap_from_config(config)
 ```
 
@@ -757,11 +757,16 @@ if cap_str:
     cap = parse_eval_cap(str(cap_str))
 
 # Override with individual keys (Level 4)
-if "max_iterations" in ev: ...
-if "max_time" in ev: ...
-if "max_input_tokens" in ev: ...
-if "max_output_tokens" in ev: ...
-if "tool_call_weight" in ev: ...
+if "max_iterations" in ev:
+    ...
+if "max_time" in ev:
+    ...
+if "max_input_tokens" in ev:
+    ...
+if "max_output_tokens" in ev:
+    ...
+if "tool_call_weight" in ev:
+    ...
 ```
 
 ### 8.8 Cache Token Tracking

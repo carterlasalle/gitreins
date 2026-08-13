@@ -363,16 +363,18 @@ def _template(self, text: str, task: dict) -> str:
     text = text.replace("{{ task.id }}", str(task.get("id", "")))
     text = text.replace("{{ task.title }}", str(task.get("title", "")))
     text = text.replace("{{ task.criteria }}", json.dumps(task.get("criteria", [])))
-    
+
     # Stage vars
     for stage_id, stage in self._stage_results.items():
         text = text.replace(f"{{{{ stage.{stage_id}.passed }}}}", str(stage.passed))
         text = text.replace(f"{{{{ stage.{stage_id}.any_failed }}}}", str(stage.any_failed))
         text = text.replace(f"{{{{ stage.{stage_id}.summary }}}}", str(stage.summary))
         text = text.replace(f"{{{{ stage.{stage_id} }}}}", json.dumps(stage.to_dict()))
-    
+
     # All stages
-    text = text.replace("{{ stages }}", json.dumps({sid: s.to_dict() for sid, s in self._stage_results.items()}))
+    text = text.replace(
+        "{{ stages }}", json.dumps({sid: s.to_dict() for sid, s in self._stage_results.items()})
+    )
     return text
 ```
 
@@ -416,6 +418,7 @@ def _normalize_yaml_bool_keys(obj):
     if isinstance(obj, list):
         return [_normalize_yaml_bool_keys(i) for i in obj]
     return obj
+
 
 def _fix_on_key(obj):
     """Specific fix for 'on'/'off' keys using most-common-intent mapping."""

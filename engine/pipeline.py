@@ -153,9 +153,7 @@ class Pipeline:
 
         return self._compile_results()
 
-    def run_review(
-        self, task: dict, archiver: "ReviewRunArchiver | None" = None
-    ) -> dict:
+    def run_review(self, task: dict, archiver: "ReviewRunArchiver | None" = None) -> dict:
         """Run the DESIGN_v2.md §17 review DAG stages (R2.16).
 
         Stages come from the config ``review_pipeline`` key: a flat list of
@@ -183,9 +181,7 @@ class Pipeline:
 
         for stage_def in self.review_stages:
             if not self._check_condition(stage_def.get("condition"), task):
-                logger.debug(
-                    "Skipping review stage %s (condition not met)", stage_def.get("id")
-                )
+                logger.debug("Skipping review stage %s (condition not met)", stage_def.get("id"))
                 continue
 
             stage_id = stage_def.get("id", f"stage_{len(self._stage_results)}")
@@ -203,9 +199,7 @@ class Pipeline:
             self._archive_review_run(archiver, task, result)
         return result
 
-    def _archive_review_run(
-        self, archiver: "ReviewRunArchiver", task: dict, result: dict
-    ) -> None:
+    def _archive_review_run(self, archiver: "ReviewRunArchiver", task: dict, result: dict) -> None:
         """Persist the completed local review under ``review_runs/<sha>/`` (§13).
 
         Mirrors ``ReviewOrchestrator._archive_run`` (engine/review/
@@ -453,13 +447,9 @@ class Pipeline:
                 data={"exit_code": result.returncode},
             )
         except subprocess.TimeoutExpired:
-            return StepResult(
-                id=step_id, type="script", passed=False, error="Command timed out"
-            )
+            return StepResult(id=step_id, type="script", passed=False, error="Command timed out")
         except Exception as e:
-            return StepResult(
-                id=step_id, type="script", passed=False, error=str(e)
-            )
+            return StepResult(id=step_id, type="script", passed=False, error=str(e))
 
     def _run_ai_eval(self, step_def: dict, task: dict) -> StepResult:
         """Run the AI evaluator as a pipeline step."""
@@ -554,9 +544,11 @@ class Pipeline:
         if prompt_template:
             pipeline_context = self._get_pipeline_context()
             import json as _json
+
             ctx_str = _json.dumps(pipeline_context.get("stages", {}), default=str)[:4000]
             rendered = prompt_template.replace(
-                "{{ pipeline_context }}", ctx_str,
+                "{{ pipeline_context }}",
+                ctx_str,
             )
             task["_system_prompt_override"] = rendered
             task["_pipeline_context"] = pipeline_context
@@ -826,9 +818,7 @@ class Pipeline:
             )
         except Exception as e:  # noqa: BLE001 — step boundary: report, don't crash the DAG
             logger.exception("review_agent step %s failed", step_id)
-            return StepResult(
-                id=step_id, type="review_agent", passed=False, error=str(e)
-            )
+            return StepResult(id=step_id, type="review_agent", passed=False, error=str(e))
 
     def _task_evidence_store(self, task: dict):
         """Resolve the task's evidence store, or None when the task carries none.
@@ -1167,14 +1157,10 @@ class Pipeline:
             finding_id=str(finding_dict.get("finding_id") or f"F{index + 1}"),
             file=str(finding_dict.get("file", "")),
             claim=str(finding_dict.get("claim", "")),
-            line=finding_dict.get("line")
-            if isinstance(finding_dict.get("line"), int)
-            else None,
+            line=finding_dict.get("line") if isinstance(finding_dict.get("line"), int) else None,
             trigger=str(finding_dict.get("trigger", "")),
             evidence=[str(r) for r in (finding_dict.get("evidence") or [])],
-            verification_plan=[
-                str(p) for p in (finding_dict.get("verification_plan") or [])
-            ],
+            verification_plan=[str(p) for p in (finding_dict.get("verification_plan") or [])],
         )
         agent = VerifierAgent(router=router, workdir=self.workdir)
         verdicts = agent.run(candidate, budget=Budget.from_config(self.config))
@@ -1241,9 +1227,7 @@ class Pipeline:
             finding["impact"] = d.get("impact", "")
             finding["patch_causality"] = d.get("patch_causality", "")
             finding["reproducible"] = bool(d.get("reproducible", False))
-            finding["execution_path_confirmed"] = bool(
-                d.get("execution_path_confirmed", False)
-            )
+            finding["execution_path_confirmed"] = bool(d.get("execution_path_confirmed", False))
             finding["verifier_confidence"] = d.get("verifier_confidence", 0.0)
             finding["developer_relevance"] = d.get("developer_relevance", "medium")
             finding["notes"] = d.get("notes", "")
@@ -1376,8 +1360,7 @@ class Pipeline:
                 type="publish_review",
                 passed=True,
                 output=(
-                    f"Local review — {len(findings)} finding(s); "
-                    "publish skipped (no PR context)."
+                    f"Local review — {len(findings)} finding(s); publish skipped (no PR context)."
                 ),
                 data={"mode": "local", "published": 0, "failed": 0},
             )
@@ -1403,8 +1386,7 @@ class Pipeline:
             posted, failed = len(result.posted), len(result.failed)
             output = (
                 f"Published {posted}/{len(batch.comments)} comment(s) to "
-                f"{owner}/{repo}#{pr_number}"
-                + (f"; {failed} failed" if failed else "")
+                f"{owner}/{repo}#{pr_number}" + (f"; {failed} failed" if failed else "")
             )
             return StepResult(
                 id=step_id,

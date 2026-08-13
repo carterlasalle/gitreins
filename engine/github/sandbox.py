@@ -107,30 +107,86 @@ DENIED_MOUNT_PATHS = (
 #: Env var name prefixes treated as credentials — scrubbed from every sandbox
 #: environment (GITREINS_LLM_* covers the API key, base URL, model config…).
 CREDENTIAL_ENV_PREFIXES = (
-    "GITHUB_TOKEN", "GH_TOKEN", "GITREINS_LLM_", "GITREINS_API_KEY",
-    "GITREINS_GH_", "OPENAI_", "ANTHROPIC_", "DEEPSEEK_", "GEMINI_",
-    "GOOGLE_", "GCP_", "AWS_", "AZURE_", "GITLAB_", "BITBUCKET_",
-    "SLACK_", "JENKINS_", "VAULT_", "KUBERNETES_", "KUBE_", "MYSQL_",
-    "POSTGRES_", "MARIADB_", "REDIS_", "MONGO_", "STRIPE_", "TWILIO_",
-    "SENDGRID_", "DOCKER_AUTH", "NPM_", "PYPI_", "HUGGINGFACE_", "HF_",
-    "CI_JOB_", "JWT_", "PRIVATE_", "SECRET_",
+    "GITHUB_TOKEN",
+    "GH_TOKEN",
+    "GITREINS_LLM_",
+    "GITREINS_API_KEY",
+    "GITREINS_GH_",
+    "OPENAI_",
+    "ANTHROPIC_",
+    "DEEPSEEK_",
+    "GEMINI_",
+    "GOOGLE_",
+    "GCP_",
+    "AWS_",
+    "AZURE_",
+    "GITLAB_",
+    "BITBUCKET_",
+    "SLACK_",
+    "JENKINS_",
+    "VAULT_",
+    "KUBERNETES_",
+    "KUBE_",
+    "MYSQL_",
+    "POSTGRES_",
+    "MARIADB_",
+    "REDIS_",
+    "MONGO_",
+    "STRIPE_",
+    "TWILIO_",
+    "SENDGRID_",
+    "DOCKER_AUTH",
+    "NPM_",
+    "PYPI_",
+    "HUGGINGFACE_",
+    "HF_",
+    "CI_JOB_",
+    "JWT_",
+    "PRIVATE_",
+    "SECRET_",
 )
 
 #: Env var name suffixes treated as credentials (checked against the
 #: upper-cased name; the leading underscore avoids matching e.g. MONKEY).
 CREDENTIAL_ENV_SUFFIXES = (
-    "_TOKEN", "_KEY", "_SECRET", "_PASSWORD", "_PASSWD", "_CREDENTIAL",
-    "_CREDENTIALS", "_API_KEY", "_ACCESS_KEY", "_PRIVATE_KEY", "_AUTH",
-    "_AUTHORIZATION", "_SESSION", "_SIGNATURE",
+    "_TOKEN",
+    "_KEY",
+    "_SECRET",
+    "_PASSWORD",
+    "_PASSWD",
+    "_CREDENTIAL",
+    "_CREDENTIALS",
+    "_API_KEY",
+    "_ACCESS_KEY",
+    "_PRIVATE_KEY",
+    "_AUTH",
+    "_AUTHORIZATION",
+    "_SESSION",
+    "_SIGNATURE",
 )
 
 #: Exact env var names always treated as credentials.
-CREDENTIAL_ENV_KEYS = frozenset({
-    "TOKEN", "API_KEY", "API_TOKEN", "ACCESS_KEY", "SECRET", "SECRET_KEY",
-    "PASSWORD", "PASSWD", "CREDENTIALS", "PRIVATE_KEY", "AUTHORIZATION",
-    "AUTH_TOKEN", "GH_TOKEN", "GITHUB_TOKEN", "GITREINS_LLM_API_KEY",
-    "GITREINS_LLM_BASE_URL", "DOCKER_AUTH_CONFIG",
-})
+CREDENTIAL_ENV_KEYS = frozenset(
+    {
+        "TOKEN",
+        "API_KEY",
+        "API_TOKEN",
+        "ACCESS_KEY",
+        "SECRET",
+        "SECRET_KEY",
+        "PASSWORD",
+        "PASSWD",
+        "CREDENTIALS",
+        "PRIVATE_KEY",
+        "AUTHORIZATION",
+        "AUTH_TOKEN",
+        "GH_TOKEN",
+        "GITHUB_TOKEN",
+        "GITREINS_LLM_API_KEY",
+        "GITREINS_LLM_BASE_URL",
+        "DOCKER_AUTH_CONFIG",
+    }
+)
 
 
 class SandboxError(Exception):
@@ -205,9 +261,7 @@ class Sandbox(ABC):
 
 def _run_subprocess(cmd, *, timeout: float, cwd: str | None = None):
     """Run ``cmd`` capturing output; module-level so tests monkeypatch it."""
-    return subprocess.run(
-        cmd, capture_output=True, text=True, timeout=timeout, cwd=cwd
-    )
+    return subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, cwd=cwd)
 
 
 def _run(cmd, *, timeout: float, cwd: str | None = None):
@@ -444,9 +498,7 @@ class DockerSandbox(Sandbox):
 
     # ── Command building ──────────────────────────────────
 
-    def _build_run_args(
-        self, command: str, cwd: str, env: dict[str, str]
-    ) -> list[str]:
+    def _build_run_args(self, command: str, cwd: str, env: dict[str, str]) -> list[str]:
         """The ``docker run`` argv for one sandboxed command (minus cidfile).
 
         Security posture (DESIGN_v2.md §9 ⚠️): ``--network none``
@@ -587,6 +639,4 @@ class DockerSandbox(Sandbox):
             os.unlink(cidfile)  # --rm already removed the container
         except OSError:
             pass
-        return SandboxResult(
-            stdout=proc.stdout, stderr=proc.stderr, exit_code=proc.returncode
-        )
+        return SandboxResult(stdout=proc.stdout, stderr=proc.stderr, exit_code=proc.returncode)

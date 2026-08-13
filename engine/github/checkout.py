@@ -102,9 +102,7 @@ class Diff:
 # ── Subprocess plumbing (module-level for hermetic monkeypatching) ───────
 
 
-def _run_git(
-    workdir: str, args: list[str], *, timeout: float = 30.0
-) -> str:
+def _run_git(workdir: str, args: list[str], *, timeout: float = 30.0) -> str:
     """Run ``git <args>`` in ``workdir``; raise ChangeSourceError on failure.
 
     Returns stdout. Errors carry the git stderr/rc in the message, never a
@@ -112,17 +110,13 @@ def _run_git(
     """
     cmd = ["git", *args]
     try:
-        result = subprocess.run(
-            cmd, capture_output=True, text=True, timeout=timeout, cwd=workdir
-        )
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, cwd=workdir)
     except FileNotFoundError as exc:
         raise ChangeSourceError(
             f"git binary not found ({exc}) — git is required for this change source"
         ) from exc
     except subprocess.TimeoutExpired as exc:
-        raise ChangeSourceError(
-            f"git {' '.join(args)} timed out after {timeout}s"
-        ) from exc
+        raise ChangeSourceError(f"git {' '.join(args)} timed out after {timeout}s") from exc
     if result.returncode != 0:
         detail = (result.stderr or result.stdout).strip()
         raise ChangeSourceError(
@@ -160,9 +154,7 @@ def _run_gh(
             "(https://cli.github.com) or set GH_TOKEN for the requests fallback"
         ) from None
     except subprocess.TimeoutExpired as exc:
-        raise ChangeSourceError(
-            f"gh {' '.join(args)} timed out after {timeout}s"
-        ) from exc
+        raise ChangeSourceError(f"gh {' '.join(args)} timed out after {timeout}s") from exc
     if result.returncode != 0:
         detail = (result.stderr or result.stdout).strip()
         raise ChangeSourceError(
@@ -225,12 +217,8 @@ class WorkingTreeChangeSource:
         self._timeout = timeout
 
     def diff(self) -> Diff:
-        unstaged = _run_git(
-            self.workdir, ["diff", "--unified=3"], timeout=self._timeout
-        )
-        staged = _run_git(
-            self.workdir, ["diff", "--cached", "--unified=3"], timeout=self._timeout
-        )
+        unstaged = _run_git(self.workdir, ["diff", "--unified=3"], timeout=self._timeout)
+        staged = _run_git(self.workdir, ["diff", "--cached", "--unified=3"], timeout=self._timeout)
         text = "\n".join(p for p in (unstaged, staged) if p.strip())
         return Diff(text=text, files=self.changed_files())
 
@@ -240,9 +228,7 @@ class WorkingTreeChangeSource:
             ["diff", "--name-only", "--diff-filter=ACM"],
             ["diff", "--cached", "--name-only", "--diff-filter=ACM"],
         ):
-            files.extend(
-                _run_git(self.workdir, args, timeout=self._timeout).splitlines()
-            )
+            files.extend(_run_git(self.workdir, args, timeout=self._timeout).splitlines())
         return sorted(set(f for f in files if f))
 
     def base_sha(self) -> str:
@@ -250,9 +236,7 @@ class WorkingTreeChangeSource:
 
     def head_sha(self) -> str:
         try:
-            sha = _run_git(
-                self.workdir, ["stash", "create"], timeout=self._timeout
-            ).strip()
+            sha = _run_git(self.workdir, ["stash", "create"], timeout=self._timeout).strip()
         except ChangeSourceError:
             sha = ""
         if not sha:
@@ -269,9 +253,7 @@ class CommitRangeChangeSource:
     refs that do not exist.
     """
 
-    def __init__(
-        self, workdir: str, base_ref: str, head_ref: str, *, timeout: float = 30.0
-    ):
+    def __init__(self, workdir: str, base_ref: str, head_ref: str, *, timeout: float = 30.0):
         self.workdir = os.path.abspath(workdir)
         self.base_ref = base_ref
         self.head_ref = head_ref
@@ -281,9 +263,7 @@ class CommitRangeChangeSource:
         return f"{self.base_ref}...{self.head_ref}"
 
     def diff(self) -> Diff:
-        text = _run_git(
-            self.workdir, ["diff", "--unified=3", self._range()], timeout=self._timeout
-        )
+        text = _run_git(self.workdir, ["diff", "--unified=3", self._range()], timeout=self._timeout)
         return Diff(text=text, files=self.changed_files())
 
     def changed_files(self) -> list[str]:
@@ -297,17 +277,13 @@ class CommitRangeChangeSource:
     def base_sha(self) -> str:
         sha = _rev_parse(self.workdir, self.base_ref, timeout=self._timeout)
         if not sha:
-            raise ChangeSourceError(
-                f"ref {self.base_ref!r} does not exist in {self.workdir}"
-            )
+            raise ChangeSourceError(f"ref {self.base_ref!r} does not exist in {self.workdir}")
         return sha
 
     def head_sha(self) -> str:
         sha = _rev_parse(self.workdir, self.head_ref, timeout=self._timeout)
         if not sha:
-            raise ChangeSourceError(
-                f"ref {self.head_ref!r} does not exist in {self.workdir}"
-            )
+            raise ChangeSourceError(f"ref {self.head_ref!r} does not exist in {self.workdir}")
         return sha
 
 
@@ -366,8 +342,7 @@ class PullRequestChangeSource:
                 meta = json.loads(raw)
             except json.JSONDecodeError as exc:
                 raise ChangeSourceError(
-                    f"gh pr view returned invalid JSON for "
-                    f"{self._repo_arg}#{self.pr_number}: {exc}"
+                    f"gh pr view returned invalid JSON for {self._repo_arg}#{self.pr_number}: {exc}"
                 ) from exc
             if not isinstance(meta, dict):
                 raise ChangeSourceError(

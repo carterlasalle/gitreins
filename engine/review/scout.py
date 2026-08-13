@@ -43,9 +43,7 @@ class ChangedSymbol:
     symbol: str = field(
         metadata={"description": "Fully-qualified symbol name, e.g. SessionManager.rotate_token."}
     )
-    risk: str = field(
-        metadata={"description": "Risk of the change: low, medium, or high."}
-    )
+    risk: str = field(metadata={"description": "Risk of the change: low, medium, or high."})
 
 
 @dataclass
@@ -60,9 +58,7 @@ class RetrievalRequest:
             )
         }
     )
-    query: str = field(
-        metadata={"description": "Symbol name or search pattern to retrieve."}
-    )
+    query: str = field(metadata={"description": "Symbol name or search pattern to retrieve."})
 
 
 @dataclass
@@ -140,9 +136,7 @@ class ScoutAgent(AgentRunner):
         parts.append("Produce the retrieval plan now.")
 
         return super().run(
-            system_prompt=_SYSTEM_PROMPT_TEMPLATE.format(
-                output_schema=schema_to_prompt(ScoutPlan)
-            ),
+            system_prompt=_SYSTEM_PROMPT_TEMPLATE.format(output_schema=schema_to_prompt(ScoutPlan)),
             user_prompt="\n\n".join(parts),
             tools=[],
             output_schema=ScoutPlan,

@@ -183,7 +183,9 @@ class TestToolWiring:
         names = [t["function"]["name"] for t in EVALUATOR_TOOLS]
         assert "scan_security" in names
         desc = next(
-            t["function"]["description"] for t in EVALUATOR_TOOLS if t["function"]["name"] == "scan_security"
+            t["function"]["description"]
+            for t in EVALUATOR_TOOLS
+            if t["function"]["name"] == "scan_security"
         )
         assert "ast-grep" in desc
 
@@ -249,7 +251,9 @@ class TestVerdictParserHook:
 
     def test_parser_keyword_fallback(self, tmp_workdir):
         """Non-JSON verdict text falls back to keyword parsing, not a schema retry."""
-        stub = StubLLM([content_response("I have verified all criteria, everything passes and is complete.")])
+        stub = StubLLM(
+            [content_response("I have verified all criteria, everything passes and is complete.")]
+        )
         ev = make_evaluator(stub, tmp_workdir, max_iterations=5)
         verdict = ev.evaluate({"id": "t1", "title": "x", "criteria": ["c1"]})
         assert verdict.verdict == "COMPLETE"
@@ -263,7 +267,9 @@ class TestPartialVerdictOnCap:
         """Cap hit after sandbox_write yields a per-criterion partial verdict."""
         stub = StubLLM(
             [
-                tool_response("sandbox_write", {"key": "verified_0", "content": "PASS: tests/test_auth.py:45"}),
+                tool_response(
+                    "sandbox_write", {"key": "verified_0", "content": "PASS: tests/test_auth.py:45"}
+                ),
                 tool_response("read_file", {"path": "nope.py"}),
                 tool_response("read_file", {"path": "nope.py"}),
             ]
@@ -291,7 +297,9 @@ class TestCompactionWiring:
                 content_response(VERDICT_JSON),
             ]
         )
-        ev = make_evaluator(stub, tmp_workdir, eval_cap="10//1000/1000")  # 10 iter, 1k in/out → threshold 900
+        ev = make_evaluator(
+            stub, tmp_workdir, eval_cap="10//1000/1000"
+        )  # 10 iter, 1k in/out → threshold 900
         verdict = ev.evaluate({"id": "t1", "title": "x", "criteria": ["c1"]})
         assert verdict.verdict == "COMPLETE"
         assert stub.calls == 2  # compacted once between the two calls

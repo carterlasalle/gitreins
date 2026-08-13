@@ -45,9 +45,7 @@ class Provenance:
     def from_dict(cls, data: dict) -> "Provenance":
         """Rebuild a Provenance from the dict produced by ``to_dict``."""
         missing = [
-            k
-            for k in ("id", "evidence_refs", "generated_by", "verified_by")
-            if k not in data
+            k for k in ("id", "evidence_refs", "generated_by", "verified_by") if k not in data
         ]
         if missing:
             raise KeyError(f"Provenance.from_dict missing keys: {', '.join(missing)}")
@@ -116,9 +114,7 @@ def resolve_ref(ref: str) -> dict:
     if kind == "static_analysis":
         # static:<source>:<ordinal>
         if len(rest) != 2:
-            raise ValueError(
-                f"malformed static ref {ref!r}: expected static:<source>:<ordinal>"
-            )
+            raise ValueError(f"malformed static ref {ref!r}: expected static:<source>:<ordinal>")
         try:
             ordinal = int(rest[1])
         except ValueError:
@@ -130,9 +126,7 @@ def resolve_ref(ref: str) -> dict:
     if kind == "call_edge":
         # graph:<source>:<key>
         if len(rest) != 2:
-            raise ValueError(
-                f"malformed graph ref {ref!r}: expected graph:<source>:<key>"
-            )
+            raise ValueError(f"malformed graph ref {ref!r}: expected graph:<source>:<key>")
         return {"kind": kind, "source": rest[0], "key": rest[1]}
 
     if kind == "reference":
@@ -147,9 +141,7 @@ def resolve_ref(ref: str) -> dict:
                     f"malformed source ref {ref!r}: line must be an integer, got {rest[1]!r}"
                 ) from None
             return {"kind": kind, "file": rest[0], "line": line}
-        raise ValueError(
-            f"malformed source ref {ref!r}: expected source:<file>[:<line>]"
-        )
+        raise ValueError(f"malformed source ref {ref!r}: expected source:<file>[:<line>]")
 
     # Generic kinds: test:<id> or <prefix>:<source>:<key|ordinal>
     if len(rest) == 1:

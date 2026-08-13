@@ -90,9 +90,7 @@ class TestScoutPlanSchema:
 
     def test_parse_response_missing_required_field_raises(self):
         with pytest.raises(SchemaError):
-            parse_response(
-                '{"changed_symbols": [], "retrieval_requests": []}', ScoutPlan
-            )
+            parse_response('{"changed_symbols": [], "retrieval_requests": []}', ScoutPlan)
 
     def test_parse_response_markdown_fence(self):
         plan = parse_response("```json\n" + PLAN_JSON + "\n```", ScoutPlan)

@@ -151,9 +151,7 @@ def test_astgrep_parse_bad_json_returns_empty():
 
 
 def test_astgrep_unavailable_binary_raises_at_construction(tmp_path, monkeypatch):
-    monkeypatch.setattr(
-        "engine.codeintel.astgrep.shutil.which", lambda name: None
-    )
+    monkeypatch.setattr("engine.codeintel.astgrep.shutil.which", lambda name: None)
     with pytest.raises(CodeIntelUnavailableError):
         AstGrepProvider(workdir=str(tmp_path))
 
@@ -188,9 +186,7 @@ def test_ripgrep_parse_canned_ndjson():
 
 
 def test_ripgrep_unavailable_binary_raises_at_construction(tmp_path, monkeypatch):
-    monkeypatch.setattr(
-        "engine.codeintel.ripgrep.shutil.which", lambda name: None
-    )
+    monkeypatch.setattr("engine.codeintel.ripgrep.shutil.which", lambda name: None)
     with pytest.raises(CodeIntelUnavailableError):
         RipgrepProvider(workdir=str(tmp_path))
 
@@ -200,9 +196,7 @@ def test_ripgrep_unavailable_binary_raises_at_construction(tmp_path, monkeypatch
 
 def test_lsp_degrades_to_empty_when_tool_missing(tmp_path, monkeypatch):
     write_fixture(tmp_path)
-    monkeypatch.setattr(
-        "engine.codeintel.lsp.find_lsp_tool", lambda tool: None
-    )
+    monkeypatch.setattr("engine.codeintel.lsp.find_lsp_tool", lambda tool: None)
     provider = LspProvider(workdir=str(tmp_path), tool="pylsp")
     assert provider.symbols("greet", file_path=str(tmp_path / "fixture.py")) == []
     assert provider.definition("greet", file_path=str(tmp_path / "fixture.py")) == []
@@ -227,9 +221,7 @@ def test_lsp_parse_document_symbols_hierarchical():
         }
     ]
     symbols = parse_document_symbols(payload)
-    assert symbols == [
-        {"file": "", "line": 1, "kind": "function", "name": "greet"}
-    ]
+    assert symbols == [{"file": "", "line": 1, "kind": "function", "name": "greet"}]
 
 
 def test_lsp_parse_document_symbols_flat_with_uri():
@@ -325,9 +317,10 @@ def test_degraded_providers_return_empty_cross_repo_impact(tmp_path, monkeypatch
 
     for provider in (astgrep, ripgrep, lsp, serena):
         assert provider.get_cross_repo_impact("greet") == []
-        assert provider.get_cross_repo_impact(
-            "greet", file_path="fixture.py", symbol="greet", limit=5
-        ) == []
+        assert (
+            provider.get_cross_repo_impact("greet", file_path="fixture.py", symbol="greet", limit=5)
+            == []
+        )
 
 
 # ── serena provider ─────────────────────────────────────────────────────
@@ -341,17 +334,13 @@ def test_serena_module_imports_cleanly():
 
 
 def test_serena_raises_at_construction_when_binary_missing(tmp_path, monkeypatch):
-    monkeypatch.setattr(
-        "engine.codeintel.serena.shutil.which", lambda name: None
-    )
+    monkeypatch.setattr("engine.codeintel.serena.shutil.which", lambda name: None)
     with pytest.raises(SerenaUnavailableError):
         SerenaProvider(workdir=str(tmp_path))
 
 
 def test_serena_availability_false_when_binary_missing(monkeypatch):
-    monkeypatch.setattr(
-        "engine.codeintel.serena.shutil.which", lambda name: None
-    )
+    monkeypatch.setattr("engine.codeintel.serena.shutil.which", lambda name: None)
     assert SerenaProvider.available() is False
 
 

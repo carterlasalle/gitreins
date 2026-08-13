@@ -27,6 +27,7 @@ import yaml
 
 from engine.version import __version__
 
+
 def main():
     parser = argparse.ArgumentParser(description="GitReins — Git-Native Agent Co-Harness")
     parser.add_argument("--version", action="version", version=f"gitreins {__version__}")

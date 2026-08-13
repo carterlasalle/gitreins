@@ -146,9 +146,9 @@ class SerenaProvider:
         return []
 
     def implementations(self, query, file_path=None, symbol=None, limit=10) -> list[dict]:
-        return self._call_tool(
-            _TOOL_IMPLEMENTATIONS, self._name_args(query, file_path, symbol)
-        )[:limit]
+        return self._call_tool(_TOOL_IMPLEMENTATIONS, self._name_args(query, file_path, symbol))[
+            :limit
+        ]
 
     def symbols(self, query, file_path=None, symbol=None, limit=10) -> list[dict]:
         return self._call_tool(_TOOL_SYMBOLS, self._symbol_args(query, file_path, symbol))[:limit]

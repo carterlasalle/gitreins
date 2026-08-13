@@ -68,7 +68,7 @@ def review_config() -> dict:
 def findings_json(claim, severity, line, evidence):
     return (
         '{"findings": [{"claim": "' + claim + '", "severity": "' + severity + '",'
-        ' "file": "auth/session.py", "line": ' + str(line) + ','
+        ' "file": "auth/session.py", "line": ' + str(line) + ","
         ' "evidence": ["' + evidence + '"], "category": "defect"}], "summary": "ok"}'
     )
 
@@ -207,9 +207,7 @@ def make_task(**overrides):
             "zero-dollar promotional orders are accepted",
             "Stripe is not contacted for free orders",
         ],
-        "change_source": FakeChangeSource(
-            ["auth/session.py"], "rotated refresh tokens\n"
-        ),
+        "change_source": FakeChangeSource(["auth/session.py"], "rotated refresh tokens\n"),
         "codeintel_provider": StubProvider(),
     }
     task.update(overrides)
@@ -386,9 +384,27 @@ class TestReviewDagE2E:
             "id": "t",
             "criteria": [],
             "findings": [
-                {"claim": "dup A", "severity": "medium", "file": "a.py", "line": 3, "evidence": ["E1"]},
-                {"claim": "dup B", "severity": "high", "file": "a.py", "line": 5, "evidence": ["E1"]},
-                {"claim": "unique", "severity": "low", "file": "b.py", "line": 9, "evidence": ["E9"]},
+                {
+                    "claim": "dup A",
+                    "severity": "medium",
+                    "file": "a.py",
+                    "line": 3,
+                    "evidence": ["E1"],
+                },
+                {
+                    "claim": "dup B",
+                    "severity": "high",
+                    "file": "a.py",
+                    "line": 5,
+                    "evidence": ["E1"],
+                },
+                {
+                    "claim": "unique",
+                    "severity": "low",
+                    "file": "b.py",
+                    "line": 9,
+                    "evidence": ["E9"],
+                },
             ],
         }
         result = p.run_review(task)
@@ -499,9 +515,7 @@ class TestReviewStageErrors:
     def test_unknown_analyzer_name_fails_step(self, tmp_workdir):
         config = {
             "pipeline": {"stages": []},
-            "review_pipeline": [
-                {"id": "bad", "type": "analyzer", "analyzer": "bogus"}
-            ],
+            "review_pipeline": [{"id": "bad", "type": "analyzer", "analyzer": "bogus"}],
         }
         p = Pipeline(config, tmp_workdir, router=review_router())
         result = p.run_review({"id": "t", "criteria": []})
@@ -604,9 +618,7 @@ class TestReviewDagArchiving:
         blocker = os.path.join(tmp_workdir, "blocker")
         with open(blocker, "w") as f:
             f.write("not a directory")
-        archiver = ReviewRunArchiver(
-            base_dir=os.path.join(blocker, "nested"), commit_sha="abc"
-        )
+        archiver = ReviewRunArchiver(base_dir=os.path.join(blocker, "nested"), commit_sha="abc")
         # The DAG still completes and reports passed; the archive failure is
         # logged, never raised (R2.13).
         result = p.run_review(task, archiver=archiver)

@@ -56,7 +56,8 @@ class TestEvidenceOverlap:
         findings = [
             make_finding(claim="short", severity="info", evidence=["E12"]),
             make_finding(
-                claim="the real detailed claim", severity="critical",
+                claim="the real detailed claim",
+                severity="critical",
                 evidence=["E12"],
             ),
         ]
@@ -226,9 +227,11 @@ class TestOrderAndDeterminism:
         assert kept[0] is findings[1]
 
     def test_accepts_dataclass_and_dict_mixed(self):
-        kept = dedupe_findings([
-            make_finding(claim="dup", severity="info", evidence=["E1"]),
-            make_dict(claim="better", severity="critical", evidence=["E1"]),
-        ])
+        kept = dedupe_findings(
+            [
+                make_finding(claim="dup", severity="info", evidence=["E1"]),
+                make_dict(claim="better", severity="critical", evidence=["E1"]),
+            ]
+        )
         assert len(kept) == 1
         assert kept[0]["severity"] == "critical"

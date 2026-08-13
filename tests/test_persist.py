@@ -262,7 +262,11 @@ def _make_gitreins_branch_repo(repo, verdicts):
         ["git", "add", ".gitreins"], check=True, capture_output=True, cwd=str(repo), env=env
     )
     subprocess.run(
-        ["git", "commit", "-q", "-m", "verdicts"], check=True, capture_output=True, cwd=str(repo), env=env
+        ["git", "commit", "-q", "-m", "verdicts"],
+        check=True,
+        capture_output=True,
+        cwd=str(repo),
+        env=env,
     )
     shutil.rmtree(repo / ".gitreins")
     return env
@@ -332,7 +336,11 @@ def test_list_verdicts_branch_fallback_skips_non_json(tmp_path):
         ["git", "add", ".gitreins"], check=True, capture_output=True, cwd=str(repo), env=env
     )
     subprocess.run(
-        ["git", "commit", "-q", "-m", "verdicts"], check=True, capture_output=True, cwd=str(repo), env=env
+        ["git", "commit", "-q", "-m", "verdicts"],
+        check=True,
+        capture_output=True,
+        cwd=str(repo),
+        env=env,
     )
     shutil.rmtree(repo / ".gitreins")
 
@@ -350,7 +358,11 @@ def test_list_verdicts_no_gitreins_branch_returns_empty(tmp_path):
         ["git", "add", "readme.txt"], check=True, capture_output=True, cwd=str(repo), env=env
     )
     subprocess.run(
-        ["git", "commit", "-q", "-m", "init"], check=True, capture_output=True, cwd=str(repo), env=env
+        ["git", "commit", "-q", "-m", "init"],
+        check=True,
+        capture_output=True,
+        cwd=str(repo),
+        env=env,
     )
 
     p = VerdictPersister(str(repo))

@@ -158,9 +158,7 @@ class TestGuardManagerInit:
 
     def test_lsp_timeout_config_parsed(self, tmp_workdir):
         """guards.lsp_timeouts.{init,per_file} are parsed into manager."""
-        gm = GuardManager(
-            tmp_workdir, {"guards": {"lsp_timeouts": {"init": 600, "per_file": 240}}}
-        )
+        gm = GuardManager(tmp_workdir, {"guards": {"lsp_timeouts": {"init": 600, "per_file": 240}}})
         assert gm._lsp_init_timeout == 600
         assert gm._lsp_per_file_timeout == 240
 
@@ -441,7 +439,11 @@ class TestExtendedGuardManager:
             with patch.object(
                 gm,
                 "_builtin_secrets_scan",
-                return_value=GuardResult("secrets", False, "Potential secrets found:\n.env:1: [AWS access key] AWS_ACCESS_KEY_ID=\"***\""),
+                return_value=GuardResult(
+                    "secrets",
+                    False,
+                    'Potential secrets found:\n.env:1: [AWS access key] AWS_ACCESS_KEY_ID="***"',
+                ),
             ):
                 result = gm._check_secrets()
         assert result.passed is False
@@ -767,9 +769,7 @@ class TestBuildDiffTestCommand:
 
         workdir = str(tmp_path)
         abs_test = os.path.join(workdir, "tests", "test_a.py")
-        cmd = _build_diff_test_command(
-            "python3 -m pytest -x --tb=short", [abs_test], workdir
-        )
+        cmd = _build_diff_test_command("python3 -m pytest -x --tb=short", [abs_test], workdir)
         assert cmd == "python3 -m pytest -x --tb=short tests/test_a.py"
         assert cmd.endswith("tests/test_a.py")
 

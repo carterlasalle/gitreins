@@ -87,9 +87,7 @@ class EvidencePlanner:
         self.store = store if store is not None else EvidenceStore()
         self.default_limit = default_limit
 
-    def execute(
-        self, plan: ScoutPlan, *, limit: int | None = None
-    ) -> list[Evidence]:
+    def execute(self, plan: ScoutPlan, *, limit: int | None = None) -> list[Evidence]:
         """Execute the plan's retrieval requests; returns appended Evidence."""
         cap = limit if limit is not None else self.default_limit
         appended: list[Evidence] = []

@@ -669,9 +669,7 @@ class TestGuardsCommandOverrides:
         from engine.pipeline import _default_tier1_steps
 
         self._make_py_workdir(tmp_workdir)
-        steps = _default_tier1_steps(
-            tmp_workdir, {"guards": {"test_command": "uv run pytest -x"}}
-        )
+        steps = _default_tier1_steps(tmp_workdir, {"guards": {"test_command": "uv run pytest -x"}})
         test_step = next(s for s in steps if s["id"] == "tests")
         assert test_step["run"] == "uv run pytest -x"
 
@@ -680,9 +678,7 @@ class TestGuardsCommandOverrides:
         from engine.pipeline import _default_tier1_steps
 
         self._make_py_workdir(tmp_workdir)
-        steps = _default_tier1_steps(
-            tmp_workdir, {"guards": {"test_timeout": 300}}
-        )
+        steps = _default_tier1_steps(tmp_workdir, {"guards": {"test_timeout": 300}})
         test_step = next(s for s in steps if s["id"] == "tests")
         assert test_step["timeout"] == 300
 

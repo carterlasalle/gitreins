@@ -170,11 +170,7 @@ class TestPublisher:
         fake = FakeGH()
         monkeypatch.setattr("engine.github.checkout._run_gh", fake)
         batch = CommentBatch(
-            comments=[
-                Comment(
-                    file="", line=None, severity="info", title="t", body="General note."
-                )
-            ]
+            comments=[Comment(file="", line=None, severity="info", title="t", body="General note.")]
         )
         result = publish_comments("acme", "widgets", 42, batch)
         assert result.ok
@@ -188,9 +184,7 @@ class TestPublisher:
         fake.fail = ChangeSourceError("gh api failed (rc=1): HTTP 403 rate limited")
         monkeypatch.setattr("engine.github.checkout._run_gh", fake)
         batch = CommentBatch(
-            comments=[
-                Comment(file="a.py", line=1, severity="high", title="t", body="b")
-            ]
+            comments=[Comment(file="a.py", line=1, severity="high", title="t", body="b")]
         )
         result = publish_comments("acme", "widgets", 42, batch)  # no raise
         assert not result.ok
@@ -273,8 +267,12 @@ class TestStatusCheck:
         fake = FakeGH()
         monkeypatch.setattr("engine.github.checkout._run_gh", fake)
         ok = set_status_check(
-            "acme", "widgets", "h" * 40, "success",
-            description="review found no blocking issues", context="gitreins/review",
+            "acme",
+            "widgets",
+            "h" * 40,
+            "success",
+            description="review found no blocking issues",
+            context="gitreins/review",
         )
         assert ok is True
         paths = [p for p, _ in api_calls(fake)]
@@ -306,9 +304,7 @@ class TestStatusCheck:
         fake = FakeGH()
         fake.fail = ChangeSourceError("gh api failed (rc=1): HTTP 401")
         monkeypatch.setattr("engine.github.checkout._run_gh", fake)
-        assert (
-            set_status_check("acme", "widgets", "h" * 40, "error") is False
-        )  # no raise
+        assert set_status_check("acme", "widgets", "h" * 40, "error") is False  # no raise
 
 
 # ── run_pr_review smoke ──────────────────────────────────────────────────
@@ -319,11 +315,11 @@ class TestRunPrReview:
         fake = FakeGH()
         monkeypatch.setattr("engine.github.checkout._run_gh", fake)
         orch = stub_orchestrator([make_finding()])
-        writer = CommentWriter(router=FakeRouter(StubLLM([content_response(BATCH_JSON)])), workdir=".")
-
-        result = run_pr_review(
-            "acme", "widgets", 42, orchestrator=orch, writer=writer, workdir="."
+        writer = CommentWriter(
+            router=FakeRouter(StubLLM([content_response(BATCH_JSON)])), workdir="."
         )
+
+        result = run_pr_review("acme", "widgets", 42, orchestrator=orch, writer=writer, workdir=".")
 
         # Findings plumbed; batch from the writer (2 comments, one high).
         assert result.owner == "acme" and result.pr_number == 42
@@ -372,7 +368,9 @@ class TestRunPrReview:
         monkeypatch.setattr("engine.github.checkout._run_gh", fake)
         orch = stub_orchestrator(
             [],
-            per_agent={"runtime_reviewer": ReviewerResult(role="runtime_reviewer", ok=False, error="boom")},
+            per_agent={
+                "runtime_reviewer": ReviewerResult(role="runtime_reviewer", ok=False, error="boom")
+            },
         )
         writer = CommentWriter(
             router=FakeRouter(StubLLM([content_response(EMPTY_BATCH_JSON)])), workdir="."
@@ -441,8 +439,13 @@ class TestRunPrReview:
         )
 
         result = run_pr_review(
-            "acme", "widgets", 42,
-            source=FakeSource(), orchestrator=orch, writer=writer, workdir=".",
+            "acme",
+            "widgets",
+            42,
+            source=FakeSource(),
+            orchestrator=orch,
+            writer=writer,
+            workdir=".",
         )
         assert result.status is not None
         assert result.status["state"] == "success"

@@ -147,9 +147,7 @@ def publish_comments(
             result.posted.append(comment)
             result.fallback_used = result.fallback_used or used_fallback
         except Exception as exc:  # noqa: BLE001 — publishing never raises
-            logger.warning(
-                "failed to publish comment %s:%s: %s", comment.file, comment.line, exc
-            )
+            logger.warning("failed to publish comment %s:%s: %s", comment.file, comment.line, exc)
             result.failed.append(comment)
             result.errors.append(str(exc))
     return result

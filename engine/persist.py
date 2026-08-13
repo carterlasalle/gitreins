@@ -243,7 +243,7 @@ class VerdictPersister:
         entries = []
         rel_prefix = prefix.rstrip("/") + "/"
         for path in paths:
-            rel = path[len(rel_prefix):] if path.startswith(rel_prefix) else path
+            rel = path[len(rel_prefix) :] if path.startswith(rel_prefix) else path
             parts = rel.split("/")
             if len(parts) != 3 or parts[2] != "verdict.json":
                 continue
@@ -321,9 +321,7 @@ class VerdictPersister:
         if result.returncode != 0:
             return 0
         return sum(
-            1
-            for line in result.stdout.splitlines()
-            if line.strip().endswith("/verdict.json")
+            1 for line in result.stdout.splitlines() if line.strip().endswith("/verdict.json")
         )
 
     # ── Internal ─────────────────────────────────────────────

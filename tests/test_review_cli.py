@@ -119,15 +119,9 @@ def stub_router():
     """Per-role stubs for every §17 agent role (+ the publish writer)."""
     clients = {
         "scout": StubLLM([LLMResponse(content=SCOUT_JSON)]),
-        "runtime_reviewer": StubLLM(
-            [LLMResponse(content=FINDINGS_BY_ROLE["runtime_reviewer"])]
-        ),
-        "contract_reviewer": StubLLM(
-            [LLMResponse(content=FINDINGS_BY_ROLE["contract_reviewer"])]
-        ),
-        "security_reviewer": StubLLM(
-            [LLMResponse(content=FINDINGS_BY_ROLE["security_reviewer"])]
-        ),
+        "runtime_reviewer": StubLLM([LLMResponse(content=FINDINGS_BY_ROLE["runtime_reviewer"])]),
+        "contract_reviewer": StubLLM([LLMResponse(content=FINDINGS_BY_ROLE["contract_reviewer"])]),
+        "security_reviewer": StubLLM([LLMResponse(content=FINDINGS_BY_ROLE["security_reviewer"])]),
         "verifier": StubLLM([LLMResponse(content=VERIFIER_JSON)]),
         "evaluator": StubLLM([LLMResponse(content=VERDICT_JSON)]),
         "writer": StubLLM([LLMResponse(content=WRITER_JSON)]),
@@ -195,9 +189,7 @@ class TestChangeSourceSelection:
         from engine.github.checkout import PullRequestChangeSource
         from gitreins.cli import _make_change_source
 
-        source = _make_change_source(
-            review_args(pr=42, owner="acme", repo="widget"), str(tmp_path)
-        )
+        source = _make_change_source(review_args(pr=42, owner="acme", repo="widget"), str(tmp_path))
         assert isinstance(source, PullRequestChangeSource)
         assert source.owner == "acme"
         assert source.repo == "widget"
@@ -231,9 +223,7 @@ class TestChangeSourceSelection:
         from engine.github.checkout import CommitRangeChangeSource
         from gitreins.cli import _make_change_source
 
-        source = _make_change_source(
-            review_args(base="main", head="feature"), str(tmp_path)
-        )
+        source = _make_change_source(review_args(base="main", head="feature"), str(tmp_path))
         assert isinstance(source, CommitRangeChangeSource)
         assert source.base_ref == "main"
         assert source.head_ref == "feature"
@@ -343,9 +333,7 @@ class TestCmdReviewLocal:
         cli_module.cmd_review(review_args())
 
         runs_dir = os.path.join(repo, "review_runs")
-        shas = [
-            d for d in os.listdir(runs_dir) if os.path.isdir(os.path.join(runs_dir, d))
-        ]
+        shas = [d for d in os.listdir(runs_dir) if os.path.isdir(os.path.join(runs_dir, d))]
         assert len(shas) == 1
         # The run dir is keyed by the working-tree change's head sha.
         assert len(shas[0]) == 40
@@ -390,8 +378,15 @@ class TestCmdReviewPR:
         cli_module.cmd_review(review_args(pr=42, owner="acme", repo="widget"))
 
         # PullRequestChangeSource asked gh for the PR's metadata + diff.
-        assert ["pr", "view", "42", "-R", "acme/widget", "--json",
-                "baseRefOid,headRefOid,headRefName,files"] in gh_calls
+        assert [
+            "pr",
+            "view",
+            "42",
+            "-R",
+            "acme/widget",
+            "--json",
+            "baseRefOid,headRefOid,headRefName,files",
+        ] in gh_calls
         assert ["pr", "diff", "42", "-R", "acme/widget"] in gh_calls
         # The publish_review stage posted the batched comment via gh api.
         assert any(
@@ -406,9 +401,7 @@ class TestCmdReviewPR:
         assert "missing authz check" in out
         assert "Lane A — criteria evaluation (1 criterion/criteria)" in out
 
-    def test_pr_uses_default_repo_when_owner_repo_omitted(
-        self, tmp_path, monkeypatch, capsys
-    ):
+    def test_pr_uses_default_repo_when_owner_repo_omitted(self, tmp_path, monkeypatch, capsys):
         from gitreins import cli as cli_module
 
         repo = make_git_repo(tmp_path)

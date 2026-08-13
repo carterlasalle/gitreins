@@ -80,27 +80,39 @@ class TestSeverityOrdering:
         ]
         ranked = rank_findings(findings)
         assert [f.severity for f in ranked] == [
-            "critical", "high", "medium", "low", "info",
+            "critical",
+            "high",
+            "medium",
+            "low",
+            "info",
         ]
 
     def test_severity_dominates_alphabetical_claim_order(self):
         """critical beats high even when its claim sorts later alphabetically."""
-        ranked = rank_findings([
-            make_finding(claim="zzz", severity="high"),
-            make_finding(claim="aaa", severity="critical"),
-        ])
+        ranked = rank_findings(
+            [
+                make_finding(claim="zzz", severity="high"),
+                make_finding(claim="aaa", severity="critical"),
+            ]
+        )
         assert [f.severity for f in ranked] == ["critical", "high"]
 
     def test_unknown_severity_sorts_last(self):
-        ranked = rank_findings([
-            make_finding(claim="mystery", severity="bogus"),
-            make_finding(claim="known", severity="info"),
-        ])
+        ranked = rank_findings(
+            [
+                make_finding(claim="mystery", severity="bogus"),
+                make_finding(claim="known", severity="info"),
+            ]
+        )
         assert [f.severity for f in ranked] == ["info", "bogus"]
 
     def test_severity_rank_mapping(self):
         assert SEVERITY_RANK == {
-            "critical": 0, "high": 1, "medium": 2, "low": 3, "info": 4,
+            "critical": 0,
+            "high": 1,
+            "medium": 2,
+            "low": 3,
+            "info": 4,
         }
 
 
@@ -109,49 +121,65 @@ class TestSeverityOrdering:
 
 class TestTieBreaks:
     def test_confidence_descending(self):
-        ranked = rank_findings([
-            make_dict(claim="c", verifier_confidence=0.4),
-            make_dict(claim="c", verifier_confidence=0.9),
-        ])
+        ranked = rank_findings(
+            [
+                make_dict(claim="c", verifier_confidence=0.4),
+                make_dict(claim="c", verifier_confidence=0.9),
+            ]
+        )
         assert [f["verifier_confidence"] for f in ranked] == [0.9, 0.4]
 
     def test_execution_path_confirmed_first(self):
-        ranked = rank_findings([
-            make_dict(claim="c", execution_path_confirmed=False),
-            make_dict(claim="c", execution_path_confirmed=True),
-        ])
+        ranked = rank_findings(
+            [
+                make_dict(claim="c", execution_path_confirmed=False),
+                make_dict(claim="c", execution_path_confirmed=True),
+            ]
+        )
         assert [f["execution_path_confirmed"] for f in ranked] == [True, False]
 
     def test_developer_relevance_order(self):
-        ranked = rank_findings([
-            make_dict(claim="c", developer_relevance="low"),
-            make_dict(claim="c", developer_relevance="high"),
-            make_dict(claim="c", developer_relevance="medium"),
-        ])
+        ranked = rank_findings(
+            [
+                make_dict(claim="c", developer_relevance="low"),
+                make_dict(claim="c", developer_relevance="high"),
+                make_dict(claim="c", developer_relevance="medium"),
+            ]
+        )
         assert [f["developer_relevance"] for f in ranked] == [
-            "high", "medium", "low",
+            "high",
+            "medium",
+            "low",
         ]
 
     def test_verifier_finding_uses_impact_and_confidence(self):
         """VerifierFinding ranks on impact (severity) before confidence."""
-        ranked = rank_findings([
-            make_verdict(
-                finding_id="F1", impact="medium", verifier_confidence=0.99,
-                execution_path_confirmed=True,
-            ),
-            make_verdict(
-                finding_id="F2", impact="high", verifier_confidence=0.5,
-                execution_path_confirmed=False,
-            ),
-        ])
+        ranked = rank_findings(
+            [
+                make_verdict(
+                    finding_id="F1",
+                    impact="medium",
+                    verifier_confidence=0.99,
+                    execution_path_confirmed=True,
+                ),
+                make_verdict(
+                    finding_id="F2",
+                    impact="high",
+                    verifier_confidence=0.5,
+                    execution_path_confirmed=False,
+                ),
+            ]
+        )
         assert [v.finding_id for v in ranked] == ["F2", "F1"]
 
     def test_stable_tie_break_file_then_line_then_claim(self):
-        ranked = rank_findings([
-            make_dict(claim="zzz", file="b.py", line=1),
-            make_dict(claim="aaa", file="a.py", line=9),
-            make_dict(claim="mmm", file="a.py", line=2),
-        ])
+        ranked = rank_findings(
+            [
+                make_dict(claim="zzz", file="b.py", line=1),
+                make_dict(claim="aaa", file="a.py", line=9),
+                make_dict(claim="mmm", file="a.py", line=2),
+            ]
+        )
         assert [f["file"] for f in ranked] == ["a.py", "a.py", "b.py"]
         assert [f["line"] for f in ranked] == [2, 9, 1]
         assert [f["claim"] for f in ranked] == ["mmm", "aaa", "zzz"]
@@ -189,12 +217,15 @@ class TestInputs:
         assert rank_findings([]) == []
 
     def test_mixed_dataclass_and_dict(self):
-        ranked = rank_findings([
-            make_finding(claim="low one", severity="low"),
-            make_dict(claim="crit one", severity="critical"),
-        ])
+        ranked = rank_findings(
+            [
+                make_finding(claim="low one", severity="low"),
+                make_dict(claim="crit one", severity="critical"),
+            ]
+        )
         assert [finding_to_dict(f)["claim"] for f in ranked] == [
-            "crit one", "low one",
+            "crit one",
+            "low one",
         ]
 
     def test_finding_to_dict_normalizes_all_types(self):

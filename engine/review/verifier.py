@@ -173,11 +173,7 @@ class VerifierFindings:
     )
     summary: str = field(
         default="",
-        metadata={
-            "description": (
-                "One-paragraph summary of this verification run's outcome."
-            )
-        },
+        metadata={"description": ("One-paragraph summary of this verification run's outcome.")},
     )
 
 
@@ -185,13 +181,9 @@ class VerifierFindings:
 class VerifierCandidate:
     """One candidate finding to verify (DESIGN_v2.md §9 shape)."""
 
-    finding_id: str = field(
-        metadata={"description": "Candidate finding id, e.g. F19."}
-    )
+    finding_id: str = field(metadata={"description": "Candidate finding id, e.g. F19."})
     file: str = field(
-        metadata={
-            "description": "Path of the file the finding refers to, relative to repo root."
-        }
+        metadata={"description": "Path of the file the finding refers to, relative to repo root."}
     )
     claim: str = field(
         metadata={
@@ -217,9 +209,7 @@ class VerifierCandidate:
     evidence: list[str] = field(
         default_factory=list,
         metadata={
-            "description": (
-                "Evidence store refs backing the claim, e.g. ['E12', 'E33', 'E52']."
-            )
+            "description": ("Evidence store refs backing the claim, e.g. ['E12', 'E33', 'E52'].")
         },
     )
     verification_plan: list[str] = field(
@@ -314,9 +304,7 @@ def serialize_candidate(candidate: VerifierCandidate) -> str:
 # ── Verifier tool belt ───────────────────────────────────────────────────
 
 
-def _make_run_command_tool(
-    workdir: str, timeout: int = 30, sandbox: Sandbox | None = None
-) -> Tool:
+def _make_run_command_tool(workdir: str, timeout: int = 30, sandbox: Sandbox | None = None) -> Tool:
     """Build the run_command Tool bound to ``workdir``.
 
     Mirrors AgenticEvaluator._tool_run_command (DESIGN_v2.md §9: "already
@@ -470,8 +458,13 @@ def _make_search_pattern_tool(workdir: str, timeout: int = 60) -> Tool:
         except re.error as e:
             return {"error": f"Invalid regex: {e}", "matches": [], "count": 0}
         skip_dirs = {
-            ".git", "venv", ".venv", "node_modules", "__pycache__",
-            ".gitreins-sandbox", ".pytest_cache",
+            ".git",
+            "venv",
+            ".venv",
+            "node_modules",
+            "__pycache__",
+            ".gitreins-sandbox",
+            ".pytest_cache",
         }
         for root, dirs, files in os.walk(workdir):
             dirs[:] = [d for d in dirs if d not in skip_dirs and not d.startswith(".")]

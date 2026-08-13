@@ -112,9 +112,7 @@ class FakeSandbox:
         self.closed = False
 
     def run(self, command, *, cwd=None, env=None, timeout=None):
-        self.runs.append(
-            {"command": command, "cwd": cwd, "env": env, "timeout": timeout}
-        )
+        self.runs.append({"command": command, "cwd": cwd, "env": env, "timeout": timeout})
         if self.error is not None:
             raise self.error
         return self.result
@@ -259,9 +257,7 @@ class TestEnvScrub:
         assert out == {"safe": "y"}
 
     def test_scrub_keeps_benign_names(self):
-        out = scrub_env(
-            {"MONKEY": "1", "GITREINS_JOB_DIR": "/tmp/jobs", "LANG": "C.UTF-8"}
-        )
+        out = scrub_env({"MONKEY": "1", "GITREINS_JOB_DIR": "/tmp/jobs", "LANG": "C.UTF-8"})
         assert set(out) == {"MONKEY", "GITREINS_JOB_DIR", "LANG"}
 
     def test_scrub_none_is_empty(self):
@@ -295,9 +291,7 @@ class TestEnvScrub:
             return subprocess.CompletedProcess(cmd, 0, stdout="out", stderr="")
 
         monkeypatch.setattr(sandbox_mod, "_run_subprocess", fake_run)
-        result = sb.run(
-            "echo hi", env={"LANG": "C.UTF-8", "GITHUB_TOKEN": "secret"}
-        )
+        result = sb.run("echo hi", env={"LANG": "C.UTF-8", "GITHUB_TOKEN": "secret"})
         assert result.exit_code == 0 and result.stdout == "out"
         assert len(calls) == 1
         run_cmd = calls[0]
@@ -319,14 +313,10 @@ class TestDeniedMounts:
         with pytest.raises(SandboxError, match="refusing to mount"):
             DockerSandbox(path, check_available=False)
 
-    @pytest.mark.parametrize(
-        "path", ["/", "/home", "/var/run/docker.sock", "/run/docker.sock"]
-    )
+    @pytest.mark.parametrize("path", ["/", "/home", "/var/run/docker.sock", "/run/docker.sock"])
     def test_refuses_denied_scratch(self, tmp_path, path):
         with pytest.raises(SandboxError, match="refusing to mount"):
-            DockerSandbox(
-                str(tmp_path / "co"), scratch_dir=path, check_available=False
-            )
+            DockerSandbox(str(tmp_path / "co"), scratch_dir=path, check_available=False)
 
     def test_denied_paths_constant_covered(self):
         assert "/" in DENIED_MOUNT_PATHS
@@ -336,9 +326,7 @@ class TestDeniedMounts:
     def test_specific_subdir_under_home_is_allowed(self):
         """The rule is never to mount the / or /home ROOTS — a specific PR
         checkout dir under them is the minimal read-only mount §9 allows."""
-        sb = DockerSandbox(
-            os.path.join("/home", "alice", "work", "repo"), check_available=False
-        )
+        sb = DockerSandbox(os.path.join("/home", "alice", "work", "repo"), check_available=False)
         assert sb.checkout_dir == "/home/alice/work/repo"
 
     def test_non_absolute_checkout_mount_rejected(self, tmp_path):
@@ -477,9 +465,7 @@ class TestClonePrCheckout:
 
     def test_clone_failure_raises_sandbox_error(self, monkeypatch):
         def fake_run(cmd, *, timeout, cwd=None):
-            return subprocess.CompletedProcess(
-                cmd, 1, stdout="", stderr="gh: not authenticated"
-            )
+            return subprocess.CompletedProcess(cmd, 1, stdout="", stderr="gh: not authenticated")
 
         monkeypatch.setattr(sandbox_mod, "_run_subprocess", fake_run)
         with pytest.raises(SandboxError, match="not authenticated"):
@@ -607,9 +593,7 @@ def _smoke_ready() -> bool:
     if shutil.which("docker") is None:
         return False
     try:
-        probe = subprocess.run(
-            ["docker", "version"], capture_output=True, text=True, timeout=10
-        )
+        probe = subprocess.run(["docker", "version"], capture_output=True, text=True, timeout=10)
         if probe.returncode != 0:
             return False
     except Exception:  # noqa: BLE001 — any failure means "skip"

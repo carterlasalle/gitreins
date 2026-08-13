@@ -112,9 +112,7 @@ class TestExecution:
 
     def test_cap_enforcement(self):
         """callers of foo → 3 callers (default_limit), not all 10."""
-        provider = FakeCodeIntelProvider(
-            {"callers": [hit(f"c{i}.py") for i in range(10)]}
-        )
+        provider = FakeCodeIntelProvider({"callers": [hit(f"c{i}.py") for i in range(10)]})
         store = EvidenceStore()
         planner = EvidencePlanner(provider, store, default_limit=3)
         evs = planner.execute(make_plan([("callers", "foo")]))
@@ -188,7 +186,12 @@ class TestEvidenceShape:
         provider = FakeCodeIntelProvider(
             {
                 "definition": [
-                    {"file": "auth/session.py", "line_start": 41, "line_end": 45, "kind": "function"}
+                    {
+                        "file": "auth/session.py",
+                        "line_start": 41,
+                        "line_end": 45,
+                        "kind": "function",
+                    }
                 ]
             }
         )
@@ -203,9 +206,7 @@ class TestEvidenceShape:
         assert ev.payload["result"]["kind"] == "function"
 
     def test_line_key_and_string_coercion(self):
-        provider = FakeCodeIntelProvider(
-            {"references": [{"file": "a.py", "line": "7"}]}
-        )
+        provider = FakeCodeIntelProvider({"references": [{"file": "a.py", "line": "7"}]})
         planner = EvidencePlanner(provider, EvidenceStore())
         evs = planner.execute(make_plan([("references", "r")]))
         assert evs[0].line_start == 7  # str coerced to int

@@ -504,13 +504,13 @@ Timeout: 120 seconds. If `skylos` is not installed, returns `passed=True` with i
 ```python
 {
     "test_mode": "diff",
-    "test_targets": 3,        # Number of test files targeted
-    "staged_count": 5,        # Number of staged source files
+    "test_targets": 3,  # Number of test files targeted
+    "staged_count": 5,  # Number of staged source files
 }
 # Or if full suite triggered:
 {
     "test_mode": "diff",
-    "test_targets": None,     # Full suite triggered
+    "test_targets": None,  # Full suite triggered
 }
 ```
 

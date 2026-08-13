@@ -114,6 +114,7 @@ def _filter_diff_text(diff_text: str) -> str:
         kept.append("\n".join(current))
     return "\n".join(kept)
 
+
 EVALUATOR_SYSTEM_PROMPT = """You are a code quality evaluator. Your job is to judge whether a completed task meets ALL of its defined criteria.
 
 ## YOUR TOOLS
@@ -360,7 +361,10 @@ EVALUATOR_TOOLS = [
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "path": {"type": "string", "description": "Optional: file or directory to scan. Omit to scan the whole repo."},
+                    "path": {
+                        "type": "string",
+                        "description": "Optional: file or directory to scan. Omit to scan the whole repo.",
+                    },
                 },
             },
         },
@@ -1157,7 +1161,7 @@ Output ONLY the JSON verdict when done — no markdown fences, no extra text."""
                 return partial
             detail = str(e)
             if detail.startswith("Cap exceeded: "):
-                detail = detail[len("Cap exceeded: "):]
+                detail = detail[len("Cap exceeded: ") :]
             msg = f"Cap exceeded: {detail}"
             logger.warning(msg)
             return Verdict(verdict="INCOMPLETE", summary=msg)
@@ -1853,11 +1857,13 @@ Output ONLY the JSON verdict when done — no markdown fences, no extra text."""
         diff, not the whole repo.)"""
         try:
             import subprocess as _sp
+
             changed: list[str] = []
-            for args in (["git", "diff", "--name-only", "HEAD"],
-                         ["git", "diff", "--cached", "--name-only"]):
-                res = _sp.run(args, capture_output=True, text=True,
-                              timeout=10, cwd=self.workdir)
+            for args in (
+                ["git", "diff", "--name-only", "HEAD"],
+                ["git", "diff", "--cached", "--name-only"],
+            ):
+                res = _sp.run(args, capture_output=True, text=True, timeout=10, cwd=self.workdir)
                 for line in res.stdout.splitlines():
                     line = line.strip()
                     if line:
@@ -1917,7 +1923,9 @@ Output ONLY the JSON verdict when done — no markdown fences, no extra text."""
             for rf in rule_files:
                 result = _sp.run(
                     [ast_grep, "scan", "--rule", rf, "--format", "sarif"] + scan_targets,
-                    capture_output=True, text=True, timeout=30,
+                    capture_output=True,
+                    text=True,
+                    timeout=30,
                     cwd=self.workdir,
                 )
                 if result.returncode != 0:
@@ -1935,13 +1943,15 @@ Output ONLY the JSON verdict when done — no markdown fences, no extra text."""
                         loc = (res.get("locations") or [{}])[0].get("physicalLocation", {})
                         art = (loc.get("artifactLocation", {}) or {}).get("uri", "")
                         reg = loc.get("region", {}) or {}
-                        all_findings.append({
-                            "file": os.path.basename(art),
-                            "path": art,
-                            "line": reg.get("startLine"),
-                            "message": msg[:300],
-                            "rule": os.path.basename(rf),
-                        })
+                        all_findings.append(
+                            {
+                                "file": os.path.basename(art),
+                                "path": art,
+                                "line": reg.get("startLine"),
+                                "message": msg[:300],
+                                "rule": os.path.basename(rf),
+                            }
+                        )
 
             return {
                 "total_findings": len(all_findings),

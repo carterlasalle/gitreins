@@ -70,9 +70,7 @@ def run_astgrep(workdir: str, path: str | None = None, timeout: float = 120.0) -
         return []
     cmd = ["ast-grep", "scan", "--json", path or "."]
     try:
-        result = subprocess.run(
-            cmd, capture_output=True, text=True, timeout=timeout, cwd=workdir
-        )
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, cwd=workdir)
     except (subprocess.TimeoutExpired, OSError) as exc:
         logger.warning("ast-grep scan failed: %s", exc)
         return []

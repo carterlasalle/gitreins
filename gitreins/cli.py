@@ -2013,7 +2013,9 @@ def main():
     review_p.add_argument(
         "--pr", type=int, help="Review GitHub pull request <n> (PullRequestChangeSource)"
     )
-    review_p.add_argument("--owner", help="GitHub owner for --pr (default: gh default repo, then origin remote)")
+    review_p.add_argument(
+        "--owner", help="GitHub owner for --pr (default: gh default repo, then origin remote)"
+    )
     review_p.add_argument("--repo", help="GitHub repo for --pr")
     review_p.add_argument("--base", help="Base ref for a commit-range review (with --head)")
     review_p.add_argument("--head", help="Head ref for a commit-range review (with --base)")

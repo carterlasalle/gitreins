@@ -64,9 +64,7 @@ def run_semgrep(workdir: str, path: str | None = None, timeout: float = 120.0) -
         return []
     cmd = ["semgrep", "scan", "--json", path or "."]
     try:
-        result = subprocess.run(
-            cmd, capture_output=True, text=True, timeout=timeout, cwd=workdir
-        )
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, cwd=workdir)
     except (subprocess.TimeoutExpired, OSError) as exc:
         logger.warning("semgrep scan failed: %s", exc)
         return []

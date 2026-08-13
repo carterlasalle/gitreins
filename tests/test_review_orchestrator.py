@@ -83,9 +83,7 @@ def reviewer_clients(claims=None, raises_role=None):
     clients = {}
     for role in DEFAULT_REVIEWER_ROLES:
         raise_ = RuntimeError("transport boom") if role == raises_role else None
-        clients[role] = StubLLM(
-            [LLMResponse(content=findings_json(claims[role]))], raises=raise_
-        )
+        clients[role] = StubLLM([LLMResponse(content=findings_json(claims[role]))], raises=raise_)
     return clients
 
 
@@ -144,9 +142,7 @@ class TestRunFromPlan:
     def test_roles_filter(self, tmp_workdir):
         router = RoleMapRouter(reviewer_clients())
         orch = ReviewOrchestrator(router=router, workdir=tmp_workdir)
-        result = orch.run_from_plan(
-            make_plan(), make_store(), roles=["contract_reviewer"]
-        )
+        result = orch.run_from_plan(make_plan(), make_store(), roles=["contract_reviewer"])
         assert list(result.per_agent.keys()) == ["contract_reviewer"]
         assert router.roles == ["contract_reviewer"]
         assert len(result.findings) == 1
@@ -251,9 +247,7 @@ class TestFullRun:
         clients = {"scout": StubLLM([LLMResponse(content=PLAN_JSON)])}
         clients.update(reviewer_clients())
         router = RoleMapRouter(clients)
-        orch = ReviewOrchestrator(
-            router=router, workdir=tmp_workdir, provider=FakeProvider()
-        )
+        orch = ReviewOrchestrator(router=router, workdir=tmp_workdir, provider=FakeProvider())
         result = orch.run(["auth/session.py"], "rotated refresh tokens")
 
         store = result.evidence_store

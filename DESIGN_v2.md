@@ -197,7 +197,8 @@ engine/agents/
 ```python
 class AgentRunner:
     def run(
-        self, *,
+        self,
+        *,
         system_prompt: str,
         user_prompt: str,
         tools: list[Tool],
@@ -268,9 +269,18 @@ ripgrep.
 class Evidence:
     id: str
     kind: Literal[
-        "diff", "symbol", "reference", "call_edge",
-        "static_analysis", "lsp", "test", "command",
-        "history", "requirement", "repo_rule", "ci",
+        "diff",
+        "symbol",
+        "reference",
+        "call_edge",
+        "static_analysis",
+        "lsp",
+        "test",
+        "command",
+        "history",
+        "requirement",
+        "repo_rule",
+        "ci",
     ]
     source: str
     file: str | None
@@ -502,6 +512,7 @@ class ChangeSource:
     def changed_files(self) -> list[str]: ...
     def base_sha(self) -> str: ...
     def head_sha(self) -> str: ...
+
 
 # WorkingTreeChangeSource
 # PullRequestChangeSource

@@ -150,9 +150,18 @@ class TestPipelineIntegration:
         return {
             "pipeline": {
                 "stages": [
-                    {"id": "tier1", "parallel": True, "steps": [
-                        {"id": "secrets", "type": "script", "run": "echo ok", "on_fail": "continue"},
-                    ]},
+                    {
+                        "id": "tier1",
+                        "parallel": True,
+                        "steps": [
+                            {
+                                "id": "secrets",
+                                "type": "script",
+                                "run": "echo ok",
+                                "on_fail": "continue",
+                            },
+                        ],
+                    },
                     tier2,
                 ]
             }

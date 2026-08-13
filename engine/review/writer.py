@@ -46,23 +46,16 @@ class Comment:
     """One review comment targeting a file:line (DESIGN_v2.md §15 output)."""
 
     file: str = field(
-        metadata={
-            "description": "Path of the file the comment refers to, relative to repo root."
-        }
+        metadata={"description": "Path of the file the comment refers to, relative to repo root."}
     )
     severity: str = field(
-        metadata={
-            "description": "Severity of the issue: critical, high, medium, low, or info."
-        }
+        metadata={"description": "Severity of the issue: critical, high, medium, low, or info."}
     )
-    title: str = field(
-        metadata={"description": "Short headline for the comment."}
-    )
+    title: str = field(metadata={"description": "Short headline for the comment."})
     body: str = field(
         metadata={
             "description": (
-                "The comment text: what is wrong, why it matters, and a "
-                "concrete fix suggestion."
+                "The comment text: what is wrong, why it matters, and a concrete fix suggestion."
             )
         }
     )
@@ -107,9 +100,7 @@ class CommentBatch:
     )
     summary: str = field(
         default="",
-        metadata={
-            "description": "One-paragraph summary of the review for the developer."
-        },
+        metadata={"description": "One-paragraph summary of the review for the developer."},
     )
 
 
@@ -244,6 +235,5 @@ class CommentWriter(AgentRunner):
         if items is not None:
             return list(items)
         raise TypeError(
-            "expected a list of findings or a findings wrapper, "
-            f"got {type(findings).__name__}"
+            f"expected a list of findings or a findings wrapper, got {type(findings).__name__}"
         )

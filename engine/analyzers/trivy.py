@@ -73,9 +73,7 @@ def run_trivy(workdir: str, timeout: float = 300.0) -> list[Evidence]:
         return []
     cmd = ["trivy", "fs", "--format", "json", "--quiet", workdir]
     try:
-        result = subprocess.run(
-            cmd, capture_output=True, text=True, timeout=timeout
-        )
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
     except (subprocess.TimeoutExpired, OSError) as exc:
         logger.warning("trivy fs scan failed: %s", exc)
         return []

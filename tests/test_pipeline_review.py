@@ -77,9 +77,7 @@ def review_router(raises_role=None):
     clients = {}
     for role in DEFAULT_REVIEWER_ROLES:
         raise_ = RuntimeError("LLM transport down") if role == raises_role else None
-        clients[role] = StubLLM(
-            [LLMResponse(content=findings_json(CLAIMS[role]))], raises=raise_
-        )
+        clients[role] = StubLLM([LLMResponse(content=findings_json(CLAIMS[role]))], raises=raise_)
     return RoleMapRouter(clients)
 
 
@@ -219,9 +217,7 @@ class TestReviewAgentErrors:
                     {
                         "id": "reviewers",
                         "parallel": True,
-                        "steps": [
-                            {"id": "x", "type": "review_agent", "role": "bogus"}
-                        ],
+                        "steps": [{"id": "x", "type": "review_agent", "role": "bogus"}],
                     }
                 ]
             }
@@ -299,9 +295,7 @@ class TestSequentialReviewAgentStage:
     def test_single_step_stage_runs(self, tmp_workdir):
         config = {
             "pipeline": {
-                "stages": [
-                    {"id": "runtime_only", "type": "review_agent", "role": "runtime"}
-                ]
+                "stages": [{"id": "runtime_only", "type": "review_agent", "role": "runtime"}]
             }
         }
         router = review_router()

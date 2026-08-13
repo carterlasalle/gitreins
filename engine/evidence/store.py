@@ -248,9 +248,7 @@ class EvidenceStore:
         for d in data.get("evidence", []):
             ev = Evidence.from_dict(d)
             self._items[ev.id] = ev
-        self._provenance = [
-            Provenance.from_dict(d) for d in data.get("provenance", [])
-        ]
+        self._provenance = [Provenance.from_dict(d) for d in data.get("provenance", [])]
 
 
 __all__ = ["EvidenceStore"]

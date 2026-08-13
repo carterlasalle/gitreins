@@ -154,9 +154,7 @@ def _lsp_request(
             continue
         if response.get("id") == request_id:
             if "error" in response:
-                logger.warning(
-                    "LSP request %s failed: %s", method, response["error"]
-                )
+                logger.warning("LSP request %s failed: %s", method, response["error"])
                 return None
             return response.get("result")
     return None
@@ -202,9 +200,7 @@ class LspProvider:
         """Run one request against a fresh server session, or None."""
         tool_path = self._tool_path
         if not tool_path:
-            logger.warning(
-                "LSP tool '%s' not found on PATH — returning empty results", self.tool
-            )
+            logger.warning("LSP tool '%s' not found on PATH — returning empty results", self.tool)
             return None
         try:
             proc = subprocess.Popen(
@@ -235,11 +231,7 @@ class LspProvider:
                     import signal as _signal
 
                     lsp_pid = proc.pid
-                    if (
-                        not isinstance(lsp_pid, int)
-                        or isinstance(lsp_pid, bool)
-                        or lsp_pid <= 1
-                    ):
+                    if not isinstance(lsp_pid, int) or isinstance(lsp_pid, bool) or lsp_pid <= 1:
                         raise ValueError(f"unsafe LSP pid: {lsp_pid!r}")
                     lsp_pgid = os.getpgid(lsp_pid)
                     our_pgid = os.getpgid(os.getpid())

@@ -69,9 +69,7 @@ def run_gitleaks(workdir: str, timeout: float = 120.0) -> list[Evidence]:
         return []
     cmd = ["gitleaks", "detect", "--source", workdir, "--no-git", "--json"]
     try:
-        result = subprocess.run(
-            cmd, capture_output=True, text=True, timeout=timeout
-        )
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
     except (subprocess.TimeoutExpired, OSError) as exc:
         logger.warning("gitleaks detect failed: %s", exc)
         return []

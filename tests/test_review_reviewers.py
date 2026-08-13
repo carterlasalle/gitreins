@@ -160,9 +160,7 @@ class TestReviewFindingSchema:
         assert "list[ReviewFinding]" in prompt
 
     def test_finding_to_dict_shape(self):
-        finding = ReviewFinding(
-            claim="c", severity="high", file="a.py", line=3, evidence=["E1"]
-        )
+        finding = ReviewFinding(claim="c", severity="high", file="a.py", line=3, evidence=["E1"])
         d = finding.to_dict()
         assert d["file"] == "a.py"
         assert d["line"] == 3
@@ -215,9 +213,7 @@ class TestReviewerRun:
         assert prompts["runtime_reviewer"] != prompts["security_reviewer"]
 
     @pytest.mark.parametrize("cls,model_role,keyword", REVIEWER_CLASSES)
-    def test_system_prompt_contains_lane_objective(
-        self, cls, model_role, keyword, tmp_workdir
-    ):
+    def test_system_prompt_contains_lane_objective(self, cls, model_role, keyword, tmp_workdir):
         stub = StubLLM([content_response(FINDINGS_JSON)])
         reviewer = cls(router=FakeRouter(stub), workdir=tmp_workdir)
         reviewer.run(make_store())
