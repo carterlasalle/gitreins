@@ -33,7 +33,7 @@ evaluator:
   file_scope: changed
   fast_track: auto
 defaults:
-  model: deepseek-v4-flash
+  model: deepseek/deepseek-v4-flash-0731
 history:
   enabled: true
   storage: git
